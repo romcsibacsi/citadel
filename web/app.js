@@ -10105,3 +10105,62 @@ document.getElementById('filesUploadInput')?.addEventListener('change', (e) => {
   lb.addEventListener('click', (e) => { if (e.target === lb) close() })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && lb.classList.contains('active')) close() })
 })()
+
+// === Stúdió (thin local-model media studio) ===
+// Map a produced absolute store path to the file-raw endpoint (root + relpath).
+function studioFileRef(abs) {
+  const m = String(abs).match(/\/store\/(comfy-video|comfy)\/(.+)$/)
+  if (!m) return null
+  return { root: m[1] === 'comfy-video' ? 'comfyvideo' : 'comfy', rel: m[2] }
+}
+
+async function runStudioRequest() {
+  const reqEl = document.getElementById('studioRequest')
+  const req = (reqEl?.value || '').trim()
+  if (!req) return
+  const btn = document.getElementById('studioRunBtn')
+  const status = document.getElementById('studioStatus')
+  const results = document.getElementById('studioResults')
+  const logEl = document.getElementById('studioLog')
+  btn.disabled = true
+  status.hidden = false
+  status.textContent = 'Dolgozom… a generálás percekig tarthat (a felület megvárja).'
+  results.innerHTML = ''
+  logEl.innerHTML = ''
+  try {
+    const res = await fetch('/api/studio/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request: req }),
+    })
+    const d = await res.json().catch(() => ({}))
+    if (d.error) { status.textContent = 'Hiba: ' + d.error; return }
+    status.textContent = d.reply || 'Kész.'
+    for (const f of (d.files || [])) {
+      const ref = studioFileRef(f)
+      if (!ref) continue
+      const url = filesRawUrl(ref.root, ref.rel, false)
+      if (/\.(png|jpg|jpeg|webp|gif)$/i.test(f)) {
+        const img = document.createElement('img')
+        img.className = 'studio-thumb'; img.loading = 'lazy'; img.src = url; img.style.cursor = 'zoom-in'
+        img.addEventListener('click', () => openFilesLightbox(ref.root, ref.rel, ref.rel))
+        results.appendChild(img)
+      } else if (/\.(mp4|webm)$/i.test(f)) {
+        const v = document.createElement('video')
+        v.className = 'studio-thumb'; v.src = url; v.controls = true; v.loop = true
+        results.appendChild(v)
+      }
+    }
+    for (const l of (d.log || [])) {
+      const div = document.createElement('div'); div.className = 'studio-log-line'; div.textContent = l.text
+      logEl.appendChild(div)
+    }
+  } catch {
+    status.textContent = 'Hiba a Stúdió-kérés során (hálózat?).'
+  } finally {
+    btn.disabled = false
+  }
+}
+document.getElementById('studioRunBtn')?.addEventListener('click', runStudioRequest)
+document.getElementById('studioRequest')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runStudioRequest() }
+})

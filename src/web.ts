@@ -46,6 +46,7 @@ import { tryHandleAutonomy } from './web/routes/autonomy.js'
 import { tryHandleIdeas } from './web/routes/ideas.js'
 import { tryHandleToolLog } from './web/routes/tool-log.js'
 import { tryHandleFiles } from './web/routes/files.js'
+import { tryHandleStudio } from './web/routes/studio.js'
 import { tryHandleStatic } from './web/routes/static.js'
 import type { RouteContext } from './web/routes/types.js'
 
@@ -155,6 +156,7 @@ export function startWebServer(port = 3420): http.Server {
       if (await tryHandleIdeas(routeCtx)) return
       if (await tryHandleToolLog(routeCtx)) return
       if (await tryHandleFiles(routeCtx)) return
+      if (await tryHandleStudio(routeCtx)) return
       if (await tryHandleStatic(routeCtx, WEB_DIR)) return
 
       res.writeHead(404)

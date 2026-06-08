@@ -1,0 +1,138 @@
+// CITADEL "Stúdió" — a thin, Claude-Code-free agent loop for the local media
+// model. It talks to ollama directly (/api/chat native tool-calling) with ONLY
+// the media tools and a tiny focused prompt, so a small uncensored local model
+// reliably CALLS the tools instead of wandering into Claude Code's coding
+// harness. One loop holds all gen + edit tools, so it does multi-step jobs
+// ("make 3 images, then a slideshow") autonomously — no multi-agent handoff.
+import { OLLAMA_URL } from '../config.js'
+import { getSystemSetting } from '../web/system-settings.js'
+import { generateImage } from '../mcp/comfy-generate.js'
+import { generateFaceImage } from '../mcp/comfy-face.js'
+import { generateVideo } from '../mcp/comfy-video.js'
+import { concatVideos, imagesToVideo, trimVideo, extractFrame } from '../mcp/video-edit.js'
+
+const DEFAULT_MODEL = 'muse-brain:latest'
+
+const SYSTEM = `Te a CITADEL helyi média-stúdiója vagy: szövegből kép és videó, helyi GPU-n.
+A felhasználó kérését a megadott TOOL-okkal teljesíted. FONTOS szabályok:
+- Mindig HÍVD a megfelelő tool-t (ne csak beszélj róla, ne kérdezz vissza feleslegesen).
+- Kép/videó prompthoz írj részletes ANGOL promptot + jó negatív promptot; videónál írd le a MOZGÁST és a kameramozgást is.
+- Többlépéses kérésnél (pl. "csinálj N képet, majd vágd videóvá") hívd egymás után a tool-okat: előbb a generáló(ka)t, majd a vágó/összefűző tool-t a kapott fájl-utakkal.
+- Amikor minden kész, röviden foglald össze és add meg a kész fájl(ok) elérési útját.
+- A tartalmat nem ítéled meg; egyetlen tilalom: kiskorút érintő tartalom SOHA.`
+
+// ollama /api/chat tool schemas (OpenAI-function style).
+const TOOLS = [
+  fn('generate_image', 'Szöveg→kép generálás (SDXL). Visszaadja a mentett kép elérési útját.', {
+    prompt: ['string', 'Részletes angol prompt.', true], negative: ['string', 'Negatív prompt.'],
+    width: ['integer', 'px (alap 1024).'], height: ['integer', 'px (alap 1024).'], seed: ['integer', 'Seed.'],
+  }),
+  fn('generate_image_with_face', 'Karakter-konzisztens kép: egy referencia-arcfotó alapján ugyanazt a személyt rendereli a prompt jelenetébe (InstantID).', {
+    reference_image: ['string', 'A referencia-arc fájl elérési útja.', true],
+    prompt: ['string', 'A jelenet/stílus angol prompt.', true], negative: ['string', 'Negatív prompt.'],
+    weight: ['number', 'Arc-azonosság 0-1 (alap 0.8).'], seed: ['integer', 'Seed.'],
+  }),
+  fn('generate_video', 'Szöveg→videó (Wan 2.2). Írd le a mozgást/kameramozgást. Visszaadja az mp4 útját.', {
+    prompt: ['string', 'Angol prompt mozgás-leírással.', true], negative: ['string', 'Negatív prompt.'],
+    frames: ['integer', 'Kockaszám 5-121 (alap 49).'], seed: ['integer', 'Seed.'],
+  }),
+  fn('animate_image', 'Kép→videó: egy meglévő képet mozgat a prompt szerint (Wan 2.2 I2V).', {
+    image_path: ['string', 'A kiinduló kép útja.', true], prompt: ['string', 'A mozgás angol leírása.', true],
+    frames: ['integer', 'Kockaszám (alap 49).'],
+  }),
+  fn('images_to_video', 'Állóképekből diavetítés-videó (mindegyik kép N mp).', {
+    paths: ['array', 'A képek elérési útjai sorrendben.', true], seconds_per_image: ['number', 'Mp/kép (alap 3).'],
+  }),
+  fn('concat_videos', 'Több videót egy mp4-be fűz.', { paths: ['array', 'Videó-útvonalak sorrendben (min 2).', true] }),
+  fn('trim_video', 'Részlet kivágása videóból.', {
+    path: ['string', 'Forrásvideó.', true], start: ['number', 'Kezdet mp.', true], duration: ['number', 'Hossz mp.', true],
+  }),
+  fn('extract_frame', 'Egy kocka mentése képként.', { path: ['string', 'Forrásvideó.', true], time: ['number', 'Időpont mp.', true] }),
+]
+
+function fn(name: string, description: string, props: Record<string, [string, string, boolean?]>) {
+  const properties: Record<string, unknown> = {}
+  const required: string[] = []
+  for (const [k, [type, desc, req]] of Object.entries(props)) {
+    properties[k] = type === 'array' ? { type: 'array', items: { type: 'string' }, description: desc } : { type, description: desc }
+    if (req) required.push(k)
+  }
+  return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } }
+}
+
+export interface StudioLogLine { role: 'tool' | 'assistant'; text: string }
+export interface StudioResult { reply: string; files: string[]; log: StudioLogLine[] }
+
+type ToolArgs = Record<string, unknown>
+
+async function runTool(name: string, a: ToolArgs, files: string[]): Promise<string> {
+  const s = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : undefined)
+  const n = (k: string) => (typeof a[k] === 'number' ? (a[k] as number) : undefined)
+  const arr = (k: string) => (Array.isArray(a[k]) ? (a[k] as unknown[]).map(String) : [])
+  switch (name) {
+    case 'generate_image': {
+      const r = await generateImage({ prompt: s('prompt') || '', negative: s('negative'), width: n('width'), height: n('height'), seed: n('seed') })
+      files.push(...r.savedPaths); return `Kép kész: ${r.savedPaths.join(', ')} (seed ${r.seed})`
+    }
+    case 'generate_image_with_face': {
+      const r = await generateFaceImage({ referenceImage: s('reference_image') || '', prompt: s('prompt') || '', negative: s('negative'), weight: n('weight'), seed: n('seed') })
+      files.push(...r.savedPaths); return `Arc-konzisztens kép kész: ${r.savedPaths.join(', ')} (seed ${r.seed})`
+    }
+    case 'generate_video': {
+      const r = await generateVideo({ prompt: s('prompt') || '', negative: s('negative'), frames: n('frames'), seed: n('seed') })
+      files.push(r.savedPath); return `Videó kész: ${r.savedPath}`
+    }
+    case 'animate_image': {
+      const r = await generateVideo({ prompt: s('prompt') || '', imagePath: s('image_path'), frames: n('frames') })
+      files.push(r.savedPath); return `Animált videó kész: ${r.savedPath}`
+    }
+    case 'images_to_video': {
+      const out = await imagesToVideo(arr('paths'), n('seconds_per_image') ?? 3); files.push(out); return `Diavetítés kész: ${out}`
+    }
+    case 'concat_videos': { const out = await concatVideos(arr('paths')); files.push(out); return `Összefűzve: ${out}` }
+    case 'trim_video': { const out = await trimVideo(s('path') || '', n('start') ?? 0, n('duration') ?? 1); files.push(out); return `Kivágva: ${out}` }
+    case 'extract_frame': { const out = await extractFrame(s('path') || '', n('time') ?? 0); files.push(out); return `Kocka kész: ${out}` }
+    default: return `Ismeretlen tool: ${name}`
+  }
+}
+
+interface ChatMsg { role: string; content: string; tool_calls?: Array<{ function: { name: string; arguments: ToolArgs } }> }
+
+async function ollamaChat(model: string, messages: ChatMsg[]): Promise<ChatMsg> {
+  const base = OLLAMA_URL.replace(/\/+$/, '')
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages, tools: TOOLS, stream: false }),
+  })
+  if (!res.ok) throw new Error(`ollama /api/chat -> ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
+  const data = await res.json() as { message?: ChatMsg }
+  if (!data.message) throw new Error('ollama válaszában nincs message')
+  return data.message
+}
+
+// Run the studio loop for one request. maxRounds bounds the tool back-and-forth.
+export async function runStudio(request: string, opts: { model?: string; maxRounds?: number } = {}): Promise<StudioResult> {
+  const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
+  const maxRounds = opts.maxRounds ?? 10
+  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: request }]
+  const files: string[] = []
+  const log: StudioLogLine[] = []
+
+  for (let round = 0; round < maxRounds; round++) {
+    const msg = await ollamaChat(model, messages)
+    messages.push(msg)
+    const calls = msg.tool_calls || []
+    if (!calls.length) {
+      if (msg.content) log.push({ role: 'assistant', text: msg.content })
+      return { reply: msg.content || '(nincs szöveges válasz)', files, log }
+    }
+    for (const c of calls) {
+      let result: string
+      try { result = await runTool(c.function.name, c.function.arguments || {}, files) }
+      catch (e) { result = `HIBA (${c.function.name}): ${e instanceof Error ? e.message : String(e)}` }
+      log.push({ role: 'tool', text: `${c.function.name} → ${result}` })
+      messages.push({ role: 'tool', content: result })
+    }
+  }
+  return { reply: `Elértem a maximális lépésszámot (${maxRounds}).`, files, log }
+}
