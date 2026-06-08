@@ -45,6 +45,7 @@ import { tryHandleStatus } from './web/routes/status.js'
 import { tryHandleAutonomy } from './web/routes/autonomy.js'
 import { tryHandleIdeas } from './web/routes/ideas.js'
 import { tryHandleToolLog } from './web/routes/tool-log.js'
+import { tryHandleFiles } from './web/routes/files.js'
 import { tryHandleStatic } from './web/routes/static.js'
 import type { RouteContext } from './web/routes/types.js'
 
@@ -112,9 +113,13 @@ export function startWebServer(port = 3420): http.Server {
     // path, validated with the same constant-time check. Everything else stays
     // header-only.
     const isSseStream = method === 'GET' && /^\/api\/agents\/[^/]+\/pane\/stream$/.test(path)
+    // File-browser raw serving is consumed via <img src>/download navigations,
+    // which likewise cannot set an Authorization header -- accept ?token= for
+    // this one GET path, validated by the same constant-time check.
+    const isFileRaw = method === 'GET' && path === '/api/files/raw'
     if (path.startsWith('/api/') && !isPublicApi) {
       const headerOk = checkBearerToken(req.headers.authorization, DASHBOARD_TOKEN)
-      const queryOk = isSseStream && checkBearerToken(`Bearer ${url.searchParams.get('token') ?? ''}`, DASHBOARD_TOKEN)
+      const queryOk = (isSseStream || isFileRaw) && checkBearerToken(`Bearer ${url.searchParams.get('token') ?? ''}`, DASHBOARD_TOKEN)
       if (!headerOk && !queryOk) {
         res.writeHead(401, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Unauthorized' }))
@@ -149,6 +154,7 @@ export function startWebServer(port = 3420): http.Server {
       if (await tryHandleAutonomy(routeCtx)) return
       if (await tryHandleIdeas(routeCtx)) return
       if (await tryHandleToolLog(routeCtx)) return
+      if (await tryHandleFiles(routeCtx)) return
       if (await tryHandleStatic(routeCtx, WEB_DIR)) return
 
       res.writeHead(404)

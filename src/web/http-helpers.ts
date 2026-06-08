@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { readFileSync, statSync } from 'node:fs'
+import { createReadStream, statSync } from 'node:fs'
 import { extname } from 'node:path'
 
 export const MIME: Record<string, string> = {
@@ -12,6 +12,9 @@ export const MIME: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
+  '.gif': 'image/gif',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
 }
 
 // Default upper bound on a request body the dashboard will buffer in RAM.
@@ -112,9 +115,11 @@ export function serveFile(
       return
     }
 
-    const data = readFileSync(filePath)
     res.writeHead(200, {
       'Content-Type': opts.contentType || MIME[ext] || 'application/octet-stream',
+      // Set explicitly because we stream the body (below) rather than handing
+      // res.end a Buffer, so Node cannot infer the length itself.
+      'Content-Length': String(stat.size),
       ETag: etag,
       'Last-Modified': lastModified,
       // no-cache: revalidate on every request (not "no caching" — that is
@@ -123,7 +128,14 @@ export function serveFile(
       'Cache-Control': 'no-cache',
       ...(opts.headers || {}),
     })
-    res.end(data)
+    // Stream rather than readFileSync the whole file into a heap Buffer: the
+    // file browser serves arbitrarily large files (videos in ~/incoming,
+    // ComfyUI batches) and a directory of large images fires many concurrent
+    // requests -- buffering each in full could OOM-crash the whole process.
+    // Streaming bounds memory to the pipe high-water mark.
+    const stream = createReadStream(filePath)
+    stream.on('error', () => { res.destroy() }) // headers already sent; abort the socket
+    stream.pipe(res)
   } catch {
     res.writeHead(404)
     res.end('Not found')

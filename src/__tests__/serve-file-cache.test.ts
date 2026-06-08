@@ -15,6 +15,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import http from 'node:http'
+import { Writable } from 'node:stream'
 import { etagMatches, serveFile, json } from '../web/http-helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -102,32 +103,40 @@ function fakeReq(headers: Record<string, string> = {}): http.IncomingMessage {
   return { headers } as unknown as http.IncomingMessage
 }
 
+// serveFile now streams the 200 body via `createReadStream(path).pipe(res)`, so
+// the mock response must be a real Writable (an EventEmitter pipe can target),
+// not a plain object -- otherwise pipe() throws and the handler falls into its
+// 404 catch. The Writable captures piped chunks as the body; writeHead/setHeader
+// capture status and headers.
+class FakeRes extends Writable {
+  statusCode: number | null = null
+  headers: Record<string, string | string[]> = {}
+  chunks: Buffer[] = []
+  writeHead(status: number, hdrs?: Record<string, string | string[]>) {
+    this.statusCode = status
+    if (hdrs) Object.assign(this.headers, hdrs)
+    return this
+  }
+  setHeader(name: string, value: string) { this.headers[name.toLowerCase()] = value }
+  _write(chunk: Buffer | string, _enc: BufferEncoding, cb: (err?: Error | null) => void) {
+    this.chunks.push(Buffer.from(chunk)); cb()
+  }
+  get body(): Buffer { return this.chunks.length ? Buffer.concat(this.chunks) : Buffer.alloc(0) }
+}
+
 function fakeRes(): {
   res: http.ServerResponse
   statusCode: number | null
   headers: Record<string, string | string[]>
   body: Buffer | null
 } {
-  const captured: {
-    statusCode: number | null
-    headers: Record<string, string | string[]>
-    body: Buffer | null
-  } = { statusCode: null, headers: {}, body: null }
-
-  const res = {
-    writeHead(status: number, hdrs?: Record<string, string | string[]>) {
-      captured.statusCode = status
-      if (hdrs) Object.assign(captured.headers, hdrs)
-    },
-    end(data?: Buffer | string) {
-      captured.body = data ? Buffer.from(data) : Buffer.alloc(0)
-    },
-    setHeader(name: string, value: string) {
-      captured.headers[name.toLowerCase()] = value
-    },
-  } as unknown as http.ServerResponse
-
-  return { res, ...captured, get statusCode() { return captured.statusCode }, get headers() { return captured.headers }, get body() { return captured.body } }
+  const inst = new FakeRes()
+  return {
+    res: inst as unknown as http.ServerResponse,
+    get statusCode() { return inst.statusCode },
+    get headers() { return inst.headers },
+    get body() { return inst.body },
+  }
 }
 
 describe('serveFile cache headers', () => {

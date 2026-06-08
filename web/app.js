@@ -249,6 +249,7 @@ function switchPage(pageId) {
   if (pageId === 'team') { loadTeamGraph() }
   if (pageId === 'messages') loadMessagesPage()
   if (pageId === 'ideas') loadIdeasPage()
+  if (pageId === 'files') loadFiles()
 }
 
 // Mobile off-canvas sidebar toggle. No-op visual effect on desktop (the
@@ -9857,4 +9858,201 @@ document.getElementById('terminalClose')?.addEventListener('click', () => {
   }
   window.addEventListener('hashchange', routeFromHash)
   routeFromHash()
+})()
+
+// === Embedded file browser ===
+// Two roots served by /api/files/*: comfy = generated images, incoming =
+// uploads. Images preview in a lightbox; any file can be downloaded or deleted.
+// The token rides in ?token= for <img>/download URLs because those navigations
+// cannot reach the global fetch wrapper that adds the Bearer header.
+const filesState = { root: 'comfy', path: '' }
+let filesEntries = [] // last fetched dir listing; filtered/sorted client-side
+
+function filesToken() { return localStorage.getItem('nexus-dashboard-token') || '' }
+
+function filesRawUrl(root, path, download) {
+  const p = new URLSearchParams({ root, path })
+  if (download) p.set('download', '1')
+  const t = filesToken()
+  if (t) p.set('token', t)
+  return '/api/files/raw?' + p.toString()
+}
+
+function filesFmtSize(n) {
+  if (!n) return ''
+  const u = ['B', 'KB', 'MB', 'GB']
+  let i = 0, v = n
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
+  return (i === 0 ? v : v.toFixed(1)) + ' ' + u[i]
+}
+
+async function loadFiles() {
+  renderFilesBreadcrumb()
+  const filterEl = document.getElementById('filesFilter')
+  if (filterEl) filterEl.value = '' // reset the filter whenever we navigate
+  const grid = document.getElementById('filesGrid')
+  grid.innerHTML = '<p class="files-loading">Betöltés…</p>'
+  try {
+    const params = new URLSearchParams({ root: filesState.root, path: filesState.path })
+    const res = await fetch('/api/files/list?' + params.toString())
+    const data = await res.json()
+    if (data.error) { grid.innerHTML = ''; showToast('Hiba: ' + data.error); return }
+    filesEntries = data.entries || []
+    applyFilesView()
+  } catch {
+    grid.innerHTML = ''
+    showToast('Fájlok betöltési hiba')
+  }
+}
+
+// Filter + sort the cached listing and re-render -- no network round-trip.
+// Directories always group first; the chosen order applies within the files.
+function applyFilesView() {
+  const q = (document.getElementById('filesFilter')?.value || '').trim().toLowerCase()
+  const mode = document.getElementById('filesSort')?.value || 'new'
+  const fileCmp = ({
+    new: (a, b) => b.mtime - a.mtime,
+    old: (a, b) => a.mtime - b.mtime,
+    az: (a, b) => a.name.localeCompare(b.name),
+    za: (a, b) => b.name.localeCompare(a.name),
+    big: (a, b) => b.size - a.size,
+    small: (a, b) => a.size - b.size,
+  })[mode] || ((a, b) => b.mtime - a.mtime)
+  const list = filesEntries
+    .filter(e => !q || e.name.toLowerCase().includes(q))
+    .slice()
+    .sort((a, b) =>
+      a.type !== b.type ? (a.type === 'dir' ? -1 : 1)
+        : a.type === 'dir' ? a.name.localeCompare(b.name) : fileCmp(a, b))
+  const cnt = document.getElementById('filesCount')
+  if (cnt) cnt.textContent = list.length ? list.length + ' elem' : ''
+  const emptyP = document.querySelector('#filesEmpty p')
+  if (emptyP) emptyP.textContent = q ? 'Nincs találat a szűrőre.' : 'Üres mappa.'
+  renderFiles(list)
+}
+
+function renderFilesBreadcrumb() {
+  const bc = document.getElementById('filesBreadcrumb')
+  if (!bc) return
+  bc.innerHTML = ''
+  const mk = (label, navPath) => {
+    const a = document.createElement('a')
+    a.href = '#'; a.textContent = label
+    a.addEventListener('click', (e) => { e.preventDefault(); filesState.path = navPath; loadFiles() })
+    return a
+  }
+  bc.appendChild(mk(filesState.root === 'comfy' ? 'Képek' : 'Incoming', ''))
+  let acc = ''
+  for (const s of (filesState.path ? filesState.path.split('/').filter(Boolean) : [])) {
+    acc = acc ? acc + '/' + s : s
+    const sep = document.createElement('span'); sep.className = 'files-bc-sep'; sep.textContent = '/'
+    bc.appendChild(sep)
+    bc.appendChild(mk(s, acc))
+  }
+}
+
+function renderFiles(entries) {
+  const grid = document.getElementById('filesGrid')
+  const empty = document.getElementById('filesEmpty')
+  grid.innerHTML = ''
+  empty.hidden = entries.length > 0
+  const folderSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+  const fileSvg = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+  const dlSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+  const delSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+
+  for (const e of entries) {
+    const relPath = filesState.path ? filesState.path + '/' + e.name : e.name
+    const card = document.createElement('div')
+    card.className = 'files-card files-card--' + e.type
+
+    const thumb = document.createElement('div')
+    if (e.type === 'dir') {
+      thumb.className = 'files-thumb files-thumb--dir'
+      thumb.innerHTML = folderSvg
+    } else if (e.isImage) {
+      thumb.className = 'files-thumb'
+      const img = document.createElement('img')
+      img.loading = 'lazy'; img.alt = e.name
+      img.src = filesRawUrl(filesState.root, relPath, false)
+      thumb.appendChild(img)
+      thumb.style.cursor = 'zoom-in'
+      thumb.addEventListener('click', () => openFilesLightbox(filesState.root, relPath, e.name))
+    } else {
+      thumb.className = 'files-thumb files-thumb--file'
+      thumb.innerHTML = fileSvg
+    }
+    card.appendChild(thumb)
+
+    const nameEl = document.createElement('div')
+    nameEl.className = 'files-card-name'
+    nameEl.textContent = e.name; nameEl.title = e.name
+    card.appendChild(nameEl)
+
+    const meta = document.createElement('div')
+    meta.className = 'files-card-meta'
+    meta.textContent = e.type === 'dir' ? 'mappa' : filesFmtSize(e.size)
+    card.appendChild(meta)
+
+    if (e.type === 'dir') {
+      card.style.cursor = 'pointer'
+      card.addEventListener('click', () => { filesState.path = relPath; loadFiles() })
+    } else {
+      const actions = document.createElement('div')
+      actions.className = 'files-card-actions'
+      const dl = document.createElement('a')
+      dl.className = 'btn-icon'; dl.title = 'Letöltés'
+      dl.href = filesRawUrl(filesState.root, relPath, true)
+      dl.setAttribute('download', ''); dl.innerHTML = dlSvg
+      const del = document.createElement('button')
+      del.className = 'btn-icon-danger'; del.type = 'button'; del.title = 'Törlés'
+      del.innerHTML = delSvg
+      del.addEventListener('click', (ev) => { ev.stopPropagation(); deleteFile(filesState.root, relPath, e.name) })
+      actions.appendChild(dl); actions.appendChild(del)
+      card.appendChild(actions)
+    }
+    grid.appendChild(card)
+  }
+}
+
+async function deleteFile(root, path, name) {
+  if (!confirm('Biztosan törlöd?\n\n' + name)) return
+  try {
+    const res = await fetch('/api/files/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root, path }),
+    })
+    const data = await res.json()
+    if (data.ok) { showToast('Törölve: ' + name); loadFiles() }
+    else showToast('Hiba: ' + (data.error || 'sikertelen törlés'))
+  } catch { showToast('Törlési hiba') }
+}
+
+function openFilesLightbox(root, path, name) {
+  document.getElementById('filesLightboxImg').src = filesRawUrl(root, path, false)
+  document.getElementById('filesLightboxName').textContent = name
+  document.getElementById('filesLightboxDownload').href = filesRawUrl(root, path, true)
+  openModal(document.getElementById('filesLightbox'))
+}
+
+// Root switcher + lightbox close wiring (once at load; the elements live in the
+// always-present #filesPage / #filesLightbox markup).
+document.querySelectorAll('.files-root-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.files-root-btn').forEach(b => b.classList.toggle('active', b === btn))
+    filesState.root = btn.dataset.root
+    filesState.path = ''
+    loadFiles()
+  })
+})
+document.getElementById('filesFilter')?.addEventListener('input', applyFilesView)
+document.getElementById('filesSort')?.addEventListener('change', applyFilesView)
+;(() => {
+  const lb = document.getElementById('filesLightbox')
+  if (!lb) return
+  const close = () => closeModal(lb)
+  document.getElementById('filesLightboxClose')?.addEventListener('click', close)
+  lb.addEventListener('click', (e) => { if (e.target === lb) close() })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && lb.classList.contains('active')) close() })
 })()

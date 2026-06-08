@@ -5285,3 +5285,150 @@ main {
 .terminal-modal .modal-header { flex-shrink: 0; }
 #terminalContainer { flex: 1; min-height: 360px; }
 .xterm { height: 100% !important; }
+
+/* === Embedded file browser === */
+.files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.files-toolbar--controls { gap: 10px; }
+.files-filter {
+  flex: 1;
+  min-width: 160px;
+  max-width: 340px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+}
+.files-filter:focus { outline: none; border-color: var(--border-focus); }
+.files-sort {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.files-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.files-roots { display: flex; gap: 6px; }
+.files-root-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.files-root-btn:hover { background: var(--bg-card-hover); }
+.files-root-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.files-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.files-breadcrumb a { color: var(--accent); text-decoration: none; }
+.files-breadcrumb a:hover { text-decoration: underline; }
+.files-bc-sep { color: var(--text-muted); }
+.files-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+.files-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.files-card:hover { border-color: var(--accent); }
+.files-card--dir:hover { transform: translateY(-2px); }
+.files-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  background: var(--bg-input);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.files-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.files-thumb--dir { color: var(--accent); }
+.files-thumb--file { color: var(--text-muted); }
+.files-card-name {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.files-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.files-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.files-card:hover .files-card-actions { opacity: 1; }
+.files-card-actions .btn-icon,
+.files-card-actions .btn-icon-danger {
+  background: rgba(20, 20, 19, 0.55);
+  color: #fff;
+  border-radius: 7px;
+  backdrop-filter: blur(2px);
+}
+.files-card-actions .btn-icon:hover { background: var(--accent); color: #fff; }
+.files-card-actions .btn-icon-danger:hover { background: var(--danger); color: #fff; }
+.files-loading, .files-empty { color: var(--text-muted); padding: 24px 4px; }
+
+/* Lightbox (full-screen image preview) */
+.files-lightbox { flex-direction: column; gap: 14px; padding: 32px; }
+.files-lightbox img {
+  max-width: 92vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.files-lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  font-size: 28px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(20, 20, 19, 0.5);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.files-lightbox-close:hover { background: var(--danger); }
+.files-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #fff;
+}
+.files-lightbox-name { font-size: 13px; opacity: 0.85; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

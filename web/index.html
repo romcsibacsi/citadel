@@ -119,11 +119,9 @@
         <span class="sb-label">Frissítések</span>
         <span class="updates-badge sb-badge" id="updatesBadge" hidden></span>
       </a>
-      <!-- External link (Filestash, LAN-only): no data-page, so the SPA router ignores it. -->
-      <a href="http://192.168.1.105:8102/" class="sb-link" target="_blank" rel="noopener" title="Fájlkezelő — generált képek és feltöltések (új fülön)">
+      <a href="#" class="sb-link" data-page="files">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         <span class="sb-label">Fájlok</span>
-        <svg class="sb-extlink" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       </a>
     </nav>
     <div class="sidebar-footer">
@@ -1221,7 +1219,54 @@
       </div>
     </div>
 
+    <!-- === Fájlok (embedded file browser) Page === -->
+    <div class="page" id="filesPage" hidden>
+      <div class="page-header">
+        <div class="page-header-row">
+          <div>
+            <h1>Fájlok</h1>
+            <p class="subtitle">Generált képek és feltöltések — beágyazott fájlkezelő</p>
+          </div>
+          <a class="btn-secondary btn-compact" href="http://192.168.1.105:8102/" target="_blank" rel="noopener" title="Haladó kezelés (feltöltés, átnevezés) a Filestash-ben">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Filestash
+          </a>
+        </div>
+      </div>
+      <div class="files-toolbar">
+        <div class="files-roots" id="filesRoots">
+          <button class="files-root-btn active" data-root="comfy" type="button">Képek</button>
+          <button class="files-root-btn" data-root="incoming" type="button">Incoming</button>
+        </div>
+        <div class="files-breadcrumb" id="filesBreadcrumb"></div>
+      </div>
+      <div class="files-toolbar files-toolbar--controls">
+        <input type="search" id="filesFilter" class="files-filter" placeholder="Szűrés névre…" autocomplete="off" spellcheck="false">
+        <select id="filesSort" class="files-sort" title="Rendezés">
+          <option value="new">Legújabb elöl</option>
+          <option value="old">Legrégebbi elöl</option>
+          <option value="az">Név A→Z</option>
+          <option value="za">Név Z→A</option>
+          <option value="big">Méret ↓</option>
+          <option value="small">Méret ↑</option>
+        </select>
+        <span class="files-count" id="filesCount"></span>
+      </div>
+      <div class="files-grid" id="filesGrid"></div>
+      <div class="files-empty" id="filesEmpty" hidden><p>Üres mappa.</p></div>
+    </div>
+
   </main>
+
+  <!-- Lightbox: full-screen image preview for the embedded file browser -->
+  <div class="modal-overlay files-lightbox" id="filesLightbox">
+    <button class="files-lightbox-close" id="filesLightboxClose" type="button" title="Bezárás (Esc)">&times;</button>
+    <img id="filesLightboxImg" alt="" />
+    <div class="files-lightbox-bar">
+      <span id="filesLightboxName" class="files-lightbox-name"></span>
+      <a id="filesLightboxDownload" class="btn-secondary btn-compact" href="#" download>Letöltés</a>
+    </div>
+  </div>
 
   <!-- Modal: Kanban kártya szerkesztés -->
   <div class="modal-overlay" id="cardModalOverlay">
