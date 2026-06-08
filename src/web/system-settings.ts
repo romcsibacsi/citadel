@@ -52,6 +52,14 @@ export const SYSTEM_SETTINGS: SystemSettingDef[] = [
     secret: false,
     placeholder: 'sd_xl_base_1.0.safetensors',
   },
+  {
+    key: 'comfy_ssh',
+    label: 'ComfyUI SSH-wake (auto-indítás)',
+    description: 'SSH-cél a GPU-géphez (user@host vagy user@host:port), hogy generáláskor a CITADEL automatikusan elindítsa a ComfyUI-t, ha áll. Üresen nincs auto-indítás. Kulcs: ~/.ssh/comfy_wake.',
+    envVar: 'COMFY_SSH',
+    secret: false,
+    placeholder: 'romcsibacsi@192.168.1.209',
+  },
 ]
 
 export function getSettingDef(key: string): SystemSettingDef | undefined {

@@ -6,6 +6,7 @@ import { getSystemSetting } from '../web/system-settings.js'
 import {
   ComfyError, queuePrompt, waitForImages, fetchImage, listCheckpoints, type ComfyImageRef,
 } from './comfy-client.js'
+import { ensureComfyUp } from './comfy-wake.js'
 
 export interface GenerateParams {
   prompt: string
@@ -63,8 +64,12 @@ async function resolveCheckpoint(explicit?: string): Promise<string> {
   return available[0]
 }
 
-export async function generateImage(params: GenerateParams): Promise<GenerateResult> {
+export interface GenerateResult2 extends GenerateResult { woke: boolean }
+
+export async function generateImage(params: GenerateParams): Promise<GenerateResult2> {
   if (!params.prompt?.trim()) throw new ComfyError('A prompt kötelező.')
+  // Auto-start ComfyUI on the GPU box if it is down (SSH wake), then continue.
+  const wake = await ensureComfyUp()
   const checkpoint = await resolveCheckpoint(params.checkpoint)
   const width = params.width ?? 1024
   const height = params.height ?? 1024
@@ -99,5 +104,5 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
     idx++
   }
 
-  return { savedPaths, checkpoint, seed, width, height, steps }
+  return { savedPaths, checkpoint, seed, width, height, steps, woke: wake.state === 'woke' }
 }

@@ -6112,6 +6112,10 @@ async function loadSystemSettings() {
         </div>`
     }).join('')
   } catch { /* ignore */ }
+  // ComfyUI status badge + light polling while the Vault page is open.
+  refreshComfyStatus()
+  if (_comfyPollTimer) clearInterval(_comfyPollTimer)
+  _comfyPollTimer = setInterval(refreshComfyStatus, 20000)
 }
 
 async function saveSystemSettings() {
@@ -6158,6 +6162,45 @@ async function runUpdateCheckFromSettings() {
 
 document.getElementById('sysIntSaveBtn')?.addEventListener('click', saveSystemSettings)
 document.getElementById('sysIntCheckBtn')?.addEventListener('click', runUpdateCheckFromSettings)
+
+// === ComfyUI live status indicator (on the Vault page) ===
+let _comfyPollTimer = null
+async function refreshComfyStatus() {
+  const dot = document.getElementById('comfyDot')
+  const txt = document.getElementById('comfyStatusText')
+  const wakeBtn = document.getElementById('comfyWakeBtn')
+  if (!dot || !txt) return
+  try {
+    const res = await fetch('/api/comfy/status')
+    const d = await res.json()
+    if (!d.configured) {
+      dot.className = 'comfy-dot off'; txt.textContent = 'ComfyUI: nincs beállítva (add meg a comfy_url-t)'
+      if (wakeBtn) wakeBtn.hidden = true
+    } else if (d.reachable) {
+      dot.className = 'comfy-dot on'
+      txt.textContent = `ComfyUI: FUT${d.version ? ' (' + d.version + ')' : ''}${d.device ? ' · ' + d.device : ''}${d.checkpoints?.length ? ' · ' + d.checkpoints.length + ' modell' : ''}`
+      if (wakeBtn) wakeBtn.hidden = true
+    } else {
+      dot.className = 'comfy-dot off'
+      txt.textContent = 'ComfyUI: leállítva'
+      if (wakeBtn) wakeBtn.hidden = !d.canWake
+    }
+  } catch {
+    dot.className = 'comfy-dot off'; txt.textContent = 'ComfyUI: ismeretlen'
+  }
+}
+document.getElementById('comfyWakeBtn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('comfyWakeBtn')
+  const txt = document.getElementById('comfyStatusText')
+  if (btn) btn.disabled = true
+  if (txt) txt.textContent = 'ComfyUI: ébresztés…'
+  try {
+    await fetch('/api/comfy/wake', { method: 'POST' })
+    // poll a bit while it boots
+    let n = 0
+    const t = setInterval(async () => { await refreshComfyStatus(); if (++n > 25) clearInterval(t) }, 4000)
+  } catch { /* ignore */ } finally { if (btn) btn.disabled = false }
+})
 
 function renderVaultGrid(secrets) {
   const list = document.getElementById('vaultPageList')

@@ -37,9 +37,10 @@ server.registerTool('generate_image', {
   try {
     const r = await generateImage(args as any)
     const lines = [
+      r.woke ? '⏻ A ComfyUI nem futott — automatikusan elindítottam (SSH-wake).' : '',
       `✅ ${r.savedPaths.length} kép generálva (${r.width}×${r.height}, ${r.steps} step, checkpoint: ${r.checkpoint}, seed: ${r.seed}).`,
       ...r.savedPaths.map(p => `  • ${p}`),
-    ]
+    ].filter(Boolean)
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   } catch (err) {
     return { isError: true, content: [{ type: 'text', text: `Kép-generálás sikertelen: ${errText(err)}` }] }

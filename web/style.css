@@ -3435,6 +3435,10 @@ main {
 .sysint-status { font-size: 12px; color: var(--text-muted); }
 .sysint-status.ok { color: #4caf50; }
 .sysint-status.err { color: #e57373; }
+.comfy-status-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+.comfy-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex: none; }
+.comfy-dot.on { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+.comfy-dot.off { background: #888; }
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
