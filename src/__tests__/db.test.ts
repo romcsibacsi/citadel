@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { statSync, existsSync, chmodSync } from 'node:fs'
+import { statSync, existsSync, chmodSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   initDatabase,
   getSession,
@@ -22,7 +23,6 @@ import {
   markPendingTaskRetryAlert,
   clearPendingTaskRetryAlert,
 } from '../db.js'
-import { STORE_DIR, DB_FILENAME } from '../config.js'
 
 beforeAll(() => {
   // Teszt adatbázis inicializálás
@@ -239,47 +239,45 @@ describe('pending task retries', () => {
 })
 
 describe('database file permissions', () => {
-  // Enforcement (not just observation): loosen every sidecar to 0o644
-  // first, then re-run initDatabase() to prove tightenDbPermissions
-  // actually narrows them. Without this, the tests would pass even if
-  // tightenDbPermissions were removed entirely -- the files would
-  // simply retain whatever mode a previous test run left them at.
-  beforeAll(async () => {
-    const { chmodSync } = await import('node:fs')
-    const dbPath = join(STORE_DIR, DB_FILENAME)
-    for (const p of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
-      if (existsSync(p)) {
-        try { chmodSync(p, 0o644) } catch { /* best effort */ }
-      }
+  // Use an explicit ON-DISK temp DB (never the real store) so the chmod
+  // behaviour is verified without touching production. initDatabase tightens
+  // any on-disk path; only the default-path-in-test case falls back to :memory:.
+  // Enforcement (not just observation): loosen the sidecars to 0o644, then
+  // re-run initDatabase() to prove tightenDbPermissions actually re-narrows them.
+  const TMP_DB = join(tmpdir(), `citadel-permtest-${process.pid}.db`)
+  const SIDECARS = [TMP_DB, `${TMP_DB}-wal`, `${TMP_DB}-shm`, `${TMP_DB}-journal`]
+  beforeAll(() => {
+    initDatabase(TMP_DB)
+    for (const p of SIDECARS) {
+      if (existsSync(p)) { try { chmodSync(p, 0o644) } catch { /* best effort */ } }
     }
-    initDatabase()
+    initDatabase(TMP_DB)
+  })
+  afterAll(() => {
+    for (const p of SIDECARS) { try { rmSync(p, { force: true }) } catch { /* best effort */ } }
+    initDatabase() // restore the isolated in-memory DB for any later code
   })
 
   it('citadel.db is tightened to owner-only (0o600) by initDatabase', () => {
-    const dbPath = join(STORE_DIR, DB_FILENAME)
-    expect(existsSync(dbPath)).toBe(true)
-    const mode = statSync(dbPath).mode & 0o777
-    expect(mode).toBe(0o600)
+    expect(existsSync(TMP_DB)).toBe(true)
+    expect(statSync(TMP_DB).mode & 0o777).toBe(0o600)
   })
 
   it('WAL sidecar (when present) is tightened to 0o600', () => {
-    const walPath = join(STORE_DIR, `${DB_FILENAME}-wal`)
+    const walPath = `${TMP_DB}-wal`
     if (!existsSync(walPath)) return // WAL may not exist on a freshly-initialised empty DB
-    const mode = statSync(walPath).mode & 0o777
-    expect(mode).toBe(0o600)
+    expect(statSync(walPath).mode & 0o777).toBe(0o600)
   })
 
   it('SHM sidecar (when present) is tightened to 0o600', () => {
-    const shmPath = join(STORE_DIR, `${DB_FILENAME}-shm`)
+    const shmPath = `${TMP_DB}-shm`
     if (!existsSync(shmPath)) return
-    const mode = statSync(shmPath).mode & 0o777
-    expect(mode).toBe(0o600)
+    expect(statSync(shmPath).mode & 0o777).toBe(0o600)
   })
 
   it('rollback-journal sidecar (when present) is tightened to 0o600', () => {
-    const journalPath = join(STORE_DIR, `${DB_FILENAME}-journal`)
+    const journalPath = `${TMP_DB}-journal`
     if (!existsSync(journalPath)) return
-    const mode = statSync(journalPath).mode & 0o777
-    expect(mode).toBe(0o600)
+    expect(statSync(journalPath).mode & 0o777).toBe(0o600)
   })
 })

@@ -35,6 +35,11 @@ function tightenDbPermissions(dbPath: string): void {
 // they only make sense for a real on-disk store file, and ':memory:' has no path
 // to chmod. This keeps tests idempotent and stops them polluting the prod DB.
 export function initDatabase(dbPathOverride?: string): void {
+  // Test isolation: vitest sets NODE_ENV=test. If a test calls initDatabase()
+  // with no explicit path, default to an in-memory DB so the suite can NEVER
+  // write into the real store/citadel.db (previously the db tests leaked rows
+  // like "Szeretem a kavét" into production memories on every run).
+  if (dbPathOverride === undefined && process.env.NODE_ENV === 'test') dbPathOverride = ':memory:'
   const useOverride = dbPathOverride !== undefined
   if (!useOverride) mkdirSync(STORE_DIR, { recursive: true })
   // Idempotent re-init: close a previous handle before opening a new one
@@ -44,11 +49,14 @@ export function initDatabase(dbPathOverride?: string): void {
     try { db.close() } catch { /* already closed */ }
   }
   const dbPath = useOverride ? dbPathOverride! : join(STORE_DIR, DB_FILENAME)
+  // In-memory DBs have no file to pre-create or chmod; on-disk paths (the real
+  // store OR an explicit on-disk test path) get the secure-create + tighten.
+  const isMemory = dbPath === ':memory:' || dbPath.startsWith('file::memory:')
   // Step 1: close the TOCTOU window on fresh installs. openSync with 'wx'
   // + 0o600 creates the file ONLY if it doesn't exist and sets the strict
   // mode atomically. better-sqlite3 then opens the existing file rather
-  // than creating one at the default umask. Skipped for a test override.
-  if (!useOverride && !existsSync(dbPath)) {
+  // than creating one at the default umask. Skipped for in-memory DBs.
+  if (!isMemory && !existsSync(dbPath)) {
     try {
       closeSync(openSync(dbPath, 'wx', 0o600))
     } catch (err) {
@@ -62,7 +70,7 @@ export function initDatabase(dbPathOverride?: string): void {
   }
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
-  if (!useOverride) tightenDbPermissions(dbPath)
+  if (!isMemory) tightenDbPermissions(dbPath)
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
