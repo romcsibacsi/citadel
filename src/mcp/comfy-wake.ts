@@ -4,11 +4,11 @@ import { homedir } from 'node:os'
 import { getSystemSetting } from '../web/system-settings.js'
 import { comfyStatus, ComfyError } from './comfy-client.js'
 
-// SSH key generated on uplinkserver; its pubkey lives in the Windows OpenSSH
-// authorized_keys. Wake = SSH to the Windows box, which runs wsl.exe to launch
-// ComfyUI (idempotent ~/comfyui-wake.sh on the WSL side).
+// SSH key generated on uplinkserver; its pubkey lives in the WSL user's
+// ~/.ssh/authorized_keys. Wake = SSH straight into the WSL Ubuntu sshd (exposed
+// on the LAN via WSL2 mirrored networking) and run the idempotent start script.
 const SSH_KEY = join(homedir(), '.ssh', 'comfy_wake')
-const REMOTE_WAKE = 'wsl.exe -d Ubuntu -e bash -lc "bash ~/comfyui-wake.sh"'
+const REMOTE_WAKE = 'bash ~/comfyui-wake.sh'
 
 export interface WakeResult { state: 'already-up' | 'woke' | 'no-ssh'; detail?: string }
 
