@@ -10164,3 +10164,25 @@ document.getElementById('studioRunBtn')?.addEventListener('click', runStudioRequ
 document.getElementById('studioRequest')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runStudioRequest() }
 })
+// Style presets: toggle the style phrase in the request box (visible + editable).
+function syncStudioPresets() {
+  const ta = document.getElementById('studioRequest')
+  if (!ta) return
+  document.querySelectorAll('#studioPresets .studio-preset').forEach(b => b.classList.toggle('active', ta.value.includes(b.dataset.style)))
+}
+document.querySelectorAll('#studioPresets .studio-preset').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const ta = document.getElementById('studioRequest')
+    if (!ta) return
+    const style = btn.dataset.style
+    if (ta.value.includes(style)) {
+      ta.value = ta.value.replace(', ' + style, '').replace(style, '').replace(/^,\s*/, '').trim()
+    } else {
+      ta.value = (ta.value.trim() ? ta.value.trim() + ', ' : '') + style
+    }
+    syncStudioPresets()
+    ta.focus()
+  })
+})
+// Keep chip highlights in sync when the box is edited by hand.
+document.getElementById('studioRequest')?.addEventListener('input', syncStudioPresets)

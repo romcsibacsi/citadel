@@ -5442,13 +5442,22 @@ main {
 .files-lightbox-name { font-size: 13px; opacity: 0.85; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* === Stúdió === */
-.studio-input { display: flex; gap: 10px; align-items: stretch; margin-bottom: 14px; }
+.studio-input-wrap { margin-bottom: 16px; }
 .studio-textarea {
-  flex: 1 1 auto; min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg-input); color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;
+  display: block; width: 100%; box-sizing: border-box; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-input);
+  color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; min-height: 70px;
 }
 .studio-textarea:focus { outline: none; border-color: var(--border-focus); }
-.studio-input .btn-primary { flex: 0 0 auto; width: auto; white-space: nowrap; }
+.studio-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.studio-presets { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
+.studio-preset {
+  padding: 6px 13px; border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-secondary); border-radius: 999px; font-size: 12.5px; cursor: pointer; transition: all 0.15s ease;
+}
+.studio-preset:hover { background: var(--bg-card-hover); }
+.studio-preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.studio-controls .btn-primary { flex: 0 0 auto; width: auto; }
 .studio-status { padding: 10px 14px; border-radius: 8px; background: var(--accent-soft); color: var(--text); font-size: 13px; margin-bottom: 14px; }
 .studio-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .studio-thumb { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; background: var(--bg-input); }
