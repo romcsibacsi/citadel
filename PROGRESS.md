@@ -144,3 +144,12 @@ github.com/romcsibacsi/citadel-re (privát), `sync_on_commit=true` — minden Gi
 GitHubra. Titkok a Vaultban (TELEGRAM/DISCORD/NTFY/GITHUB token + GITHUB_PUSH_TOKEN + GITEA_TOKEN),
 .env változatlan. Gitea-push módja: `git -c credential.helper='!f(){ echo username=romeo; echo
 password=$GITEA_TOKEN; };f' push origin`. Dashboard checker: romcsibacsi/citadel @ citadel-build, behind 0.
+
+## 2026-06-08 — Teljes de-brand + friss history (squash)
+A working tree-ből minden upstream branding kitisztítva (Marveen/Szota/Szabolcs/skool/ClaudeClaw/Marvin),
+README újraírva CITADEL-re, elavult upstream artefaktum (REBUILD_PROMPT_V3) + obsolete migrációs scriptek
+törölve. Jogilag kötelező attribúció MEGTARTVA: LICENSE (upstream copyright + CITADEL fork copyright) és
+ATTRIBUTIONS.md (CITADEL-doksi, az upstreamet mint fork-forrást krediteli). A teljes git-history
+**squash-olva egyetlen friss CITADEL initial commitra** (c870843) — nincs upstream üzenet/szerzőség.
+Force-push Gitea-ra → push-mirror → GitHub; mindkettő 1-commitos friss history, checker behind 0,
+typecheck + 1053 teszt zöld. Lokális backup tag a régi history-ra: backup/pre-rebrand-0a49a0a.
