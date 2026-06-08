@@ -121,6 +121,7 @@ function resolveSeedPlaceholders(content: string): string {
     .replaceAll('{{CHAT_ID}}', CHANNEL_CHAT_ID)
     .replaceAll('{{MAIN_AGENT_ID}}', MAIN_AGENT_ID)
     .replaceAll('{{BOT_NAME}}', BOT_NAME)
+    .replaceAll('{{PROJECT_ROOT}}', PROJECT_ROOT)
 }
 
 // Recursively copy a seed agent directory into the live agents/ tree,
@@ -193,6 +194,20 @@ export function scaffoldAgentDir(name: string) {
       // Valid empty shape -- `claude /doctor` rejects plain "{}"
       atomicWriteFileSync(mcpJson, JSON.stringify({ mcpServers: {} }, null, 2))
     }
+  }
+  // Per-agent MCP servers shipped with a seed (committed, NOT gitignored like
+  // .mcp.json): merge mcp-servers.seed.json into the agent's .mcp.json. Lets a
+  // seed agent declare a dedicated MCP server (e.g. CREATIVE -> comfy) that is
+  // reproducible from a clone. {{PROJECT_ROOT}} in the seed is already resolved
+  // by copySeedDir. No-op for agents created via the API (no seed file).
+  const mcpSeed = join(dir, 'mcp-servers.seed.json')
+  if (existsSync(mcpSeed)) {
+    try {
+      const current = JSON.parse(readFileSync(mcpJson, 'utf-8'))
+      const seed = JSON.parse(readFileSync(mcpSeed, 'utf-8'))
+      current.mcpServers = { ...(current.mcpServers || {}), ...(seed.mcpServers || {}) }
+      atomicWriteFileSync(mcpJson, JSON.stringify(current, null, 2))
+    } catch { /* malformed seed -- leave .mcp.json as-is */ }
   }
   // Seed settings.json from template so the agent gets the PreCompact
   // hook (memory save + skill reflection) out of the box. Only if the

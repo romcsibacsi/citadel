@@ -26,6 +26,7 @@ agents (see the privilege gate). The roster:
 | **RELAY** | Netops / homelab (install, fix, build on the homelab only) | blue |
 | **SCREENER** | Video — generation, editing, analysis (draft only) | green |
 | **ORACLE** | Researcher / intel (tech & security research — draft only) | gold |
+| **CREATIVE** | Image generation via local ComfyUI (draft only) | pink |
 
 Team graph: every agent `reportsTo` NEXUS; NEXUS `delegatesTo` all. NEXUS never creates an agent
 more privileged than the fixed cap, and anything above sandbox requires explicit human approval.

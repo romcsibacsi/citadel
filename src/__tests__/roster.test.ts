@@ -19,6 +19,7 @@ const EXPECTED = {
   relay: { profile: 'homelab-full', accent: '#3b82f6' },
   screener: { profile: 'media', accent: '#22c55e' },
   oracle: { profile: 'researcher', accent: '#d4af37' },
+  creative: { profile: 'media', accent: '#ec4899' },
 } as const
 
 const MAIN_AGENT_ID = 'nexus'
@@ -28,7 +29,7 @@ function readConfig(name: string): Record<string, any> {
 }
 
 describe('seed-agents roster', () => {
-  it('contains exactly the 6 expected sub-agent dirs (NEXUS excluded)', () => {
+  it('contains exactly the 7 expected sub-agent dirs (NEXUS excluded)', () => {
     const dirs = readdirSync(SEED_DIR).filter((f) => statSync(join(SEED_DIR, f)).isDirectory())
     expect(dirs.sort()).toEqual(Object.keys(EXPECTED).sort())
     expect(dirs).not.toContain(MAIN_AGENT_ID)

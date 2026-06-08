@@ -1,0 +1,13 @@
+{
+  "displayName": "CREATIVE",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "media",
+  "accent": "#ec4899",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}

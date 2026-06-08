@@ -36,6 +36,22 @@ export const SYSTEM_SETTINGS: SystemSettingDef[] = [
     secret: true,
     placeholder: 'ghp_...',
   },
+  {
+    key: 'comfy_url',
+    label: 'ComfyUI URL (kép-generálás)',
+    description: 'A GPU-gépen futó ComfyUI elérhetősége, pl. http://192.168.1.50:8188 — a CREATIVE ügynök ezen át generál képet.',
+    envVar: 'COMFY_URL',
+    secret: false,
+    placeholder: 'http://192.168.1.50:8188',
+  },
+  {
+    key: 'comfy_checkpoint',
+    label: 'ComfyUI checkpoint (opcionális)',
+    description: 'Alapértelmezett modell-fájl neve (pl. sd_xl_base_1.0.safetensors). Üresen hagyva a ComfyUI első elérhető checkpointját használja.',
+    envVar: 'COMFY_CHECKPOINT',
+    secret: false,
+    placeholder: 'sd_xl_base_1.0.safetensors',
+  },
 ]
 
 export function getSettingDef(key: string): SystemSettingDef | undefined {
