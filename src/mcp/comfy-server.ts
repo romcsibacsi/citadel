@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { generateImage } from './comfy-generate.js'
+import { generateFaceImage } from './comfy-face.js'
 import { listCheckpoints, comfyStatus, ComfyError } from './comfy-client.js'
 
 function errText(err: unknown): string {
@@ -44,6 +45,36 @@ server.registerTool('generate_image', {
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   } catch (err) {
     return { isError: true, content: [{ type: 'text', text: `Kép-generálás sikertelen: ${errText(err)}` }] }
+  }
+})
+
+server.registerTool('generate_image_with_face', {
+  title: 'Karakter-konzisztens kép (InstantID)',
+  description: 'Egy referencia-arcfotó alapján generál képet úgy, hogy a SZEMÉLY arca konzisztens marad, de a jelenet/stílus a prompt szerinti. Így több különböző kép is ugyanarra a személyre hasonlít. A referencia a store/comfy, store/comfy-video vagy ~/incoming alól.',
+  inputSchema: {
+    reference_image: z.string().describe('A referencia-arcfotó pontos elérési útja (egy tiszta, szemből látszó arc a legjobb).'),
+    prompt: z.string().describe('A kívánt jelenet/stílus (angol prompt ajánlott).'),
+    negative: z.string().optional().describe('Negatív prompt.'),
+    checkpoint: z.string().optional().describe('SDXL checkpoint (üresen az alapértelmezett).'),
+    width: z.number().int().optional().describe('Szélesség px (alap 1016).'),
+    height: z.number().int().optional().describe('Magasság px (alap 1016).'),
+    steps: z.number().int().optional().describe('Lépések (alap 30).'),
+    cfg: z.number().optional().describe('CFG (alap 4.5 — az InstantID alacsony CFG-t igényel).'),
+    weight: z.number().optional().describe('Arc-azonosság erőssége 0-1 (alap 0.8; feljebb hűségesebb, lejjebb kreatívabb).'),
+    seed: z.number().int().optional().describe('Seed; üresen véletlen.'),
+  },
+}, async (args) => {
+  try {
+    const a = args as any
+    const r = await generateFaceImage({ ...a, referenceImage: a.reference_image })
+    const lines = [
+      r.woke ? '⏻ A ComfyUI nem futott — automatikusan elindítottam (SSH-wake).' : '',
+      `✅ ${r.savedPaths.length} karakter-konzisztens kép (checkpoint: ${r.checkpoint}, arc-erősség: ${r.weight}, seed: ${r.seed}).`,
+      ...r.savedPaths.map(p => `  • ${p}`),
+    ].filter(Boolean)
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } catch (err) {
+    return { isError: true, content: [{ type: 'text', text: `Karakter-konzisztens generálás sikertelen: ${err instanceof ComfyError ? err.message : (err instanceof Error ? err.message : String(err))}` }] }
   }
 })
 

@@ -2,7 +2,15 @@
   "mcpServers": {
     "comfy": {
       "command": "node",
-      "args": ["{{PROJECT_ROOT}}/dist/mcp/comfy-server.js"]
+      "args": [
+        "{{PROJECT_ROOT}}/dist/mcp/comfy-server.js"
+      ]
+    },
+    "videoedit": {
+      "command": "node",
+      "args": [
+        "{{PROJECT_ROOT}}/dist/mcp/video-edit-server.js"
+      ]
     }
   }
 }
