@@ -1,0 +1,13 @@
+{
+  "displayName": "MUSE",
+  "model": "qwen3:14b",
+  "securityProfile": "media",
+  "accent": "#a855f7",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}
