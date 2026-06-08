@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto'
 import { PROJECT_ROOT } from '../config.js'
 import { getSystemSetting } from '../web/system-settings.js'
 import { ComfyError, queuePrompt, waitForImages, fetchImage, listCheckpoints, comfyBaseUrl, type ComfyImageRef } from './comfy-client.js'
-import { ensureComfyUp } from './comfy-wake.js'
+import { ensureComfyUp, freeOllamaVram } from './comfy-wake.js'
 
 const OUTPUT_DIR = join(PROJECT_ROOT, 'store', 'comfy')
 const INSTANTID_FILE = 'ip-adapter.bin'
@@ -98,6 +98,7 @@ export async function generateFaceImage(params: FaceParams): Promise<FaceResult>
   if (!params.prompt?.trim()) throw new ComfyError('A prompt kötelező.')
   if (!params.referenceImage?.trim()) throw new ComfyError('A referencia-kép (face) kötelező.')
   const wake = await ensureComfyUp()
+  await freeOllamaVram() // evict the (large) agent brain so InstantID + SDXL don't OOM
   const refReal = resolveRef(params.referenceImage.trim())
   const refName = await uploadComfyImage(readFileSync(refReal), basename(refReal))
   const checkpoint = await resolveCheckpoint(params.checkpoint)

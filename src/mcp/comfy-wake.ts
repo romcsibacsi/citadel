@@ -1,8 +1,33 @@
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { OLLAMA_URL } from '../config.js'
 import { getSystemSetting } from '../web/system-settings.js'
 import { comfyStatus, ComfyError } from './comfy-client.js'
+
+// Free GPU VRAM before a (large) ComfyUI generation by evicting any loaded
+// ollama models. The 5090's 32GB is shared by the agent brain and the gen
+// models; a big brain (e.g. a 32B at ~24GB) + SDXL/Wan would OOM and drop the
+// card off the bus. Best-effort: failures are ignored. Returns true if it
+// evicted anything. Every generate* path calls this first.
+export async function freeOllamaVram(): Promise<boolean> {
+  try {
+    const base = OLLAMA_URL.replace(/\/+$/, '')
+    const res = await fetch(`${base}/api/ps`)
+    if (!res.ok) return false
+    const data = await res.json() as { models?: Array<{ name?: string }> }
+    const names = (data.models || []).map(m => m.name).filter((n): n is string => !!n)
+    for (const name of names) {
+      await fetch(`${base}/api/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name, keep_alive: 0 }),
+      }).catch(() => {})
+    }
+    return names.length > 0
+  } catch {
+    return false
+  }
+}
 
 // SSH key generated on uplinkserver; its pubkey lives in the WSL user's
 // ~/.ssh/authorized_keys. Wake = SSH straight into the WSL Ubuntu sshd (exposed

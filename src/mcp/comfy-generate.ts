@@ -6,7 +6,7 @@ import { getSystemSetting } from '../web/system-settings.js'
 import {
   ComfyError, queuePrompt, waitForImages, fetchImage, listCheckpoints, type ComfyImageRef,
 } from './comfy-client.js'
-import { ensureComfyUp } from './comfy-wake.js'
+import { ensureComfyUp, freeOllamaVram } from './comfy-wake.js'
 
 export interface GenerateParams {
   prompt: string
@@ -70,6 +70,8 @@ export async function generateImage(params: GenerateParams): Promise<GenerateRes
   if (!params.prompt?.trim()) throw new ComfyError('A prompt kötelező.')
   // Auto-start ComfyUI on the GPU box if it is down (SSH wake), then continue.
   const wake = await ensureComfyUp()
+  // Free GPU VRAM (evict the agent's LLM) so a big local brain + SDXL don't OOM.
+  await freeOllamaVram()
   const checkpoint = await resolveCheckpoint(params.checkpoint)
   const width = params.width ?? 1024
   const height = params.height ?? 1024

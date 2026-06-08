@@ -6,9 +6,9 @@ import { mkdirSync, writeFileSync, readFileSync, statSync, realpathSync } from '
 import { join, basename, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { PROJECT_ROOT, OLLAMA_URL } from '../config.js'
+import { PROJECT_ROOT } from '../config.js'
 import { ComfyError, queuePrompt, comfyBaseUrl, type ComfyImageRef } from './comfy-client.js'
-import { ensureComfyUp } from './comfy-wake.js'
+import { ensureComfyUp, freeOllamaVram } from './comfy-wake.js'
 
 // Wan 2.2 TI2V-5B files (downloaded into the ComfyUI model dirs).
 const WAN_UNET = 'wan2.2_ti2v_5B_fp16.safetensors'
@@ -70,28 +70,6 @@ function buildWanWorkflow(
   }
   if (startImageName) wf['50'] = { class_type: 'LoadImage', inputs: { image: startImageName } }
   return wf
-}
-
-// Free GPU VRAM before the (large) video run by evicting any loaded ollama
-// models. The 5B video model + a 13GB agent brain would otherwise risk the same
-// OOM that previously wedged the WSL GPU. Best-effort: failures are ignored.
-async function freeOllamaVram(): Promise<boolean> {
-  try {
-    const base = OLLAMA_URL.replace(/\/+$/, '')
-    const res = await fetch(`${base}/api/ps`)
-    if (!res.ok) return false
-    const data = await res.json() as { models?: Array<{ name?: string }> }
-    const names = (data.models || []).map(m => m.name).filter((n): n is string => !!n)
-    for (const name of names) {
-      await fetch(`${base}/api/generate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: name, keep_alive: 0 }),
-      }).catch(() => {})
-    }
-    return names.length > 0
-  } catch {
-    return false
-  }
 }
 
 // Upload a local image into ComfyUI's input dir (for image->video). Returns the
