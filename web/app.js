@@ -1392,10 +1392,14 @@ document.getElementById('wizardCreateBtn').addEventListener('click', async () =>
 })
 
 // === Toast ===
+let toastTimer = null
 function showToast(msg, duration = 3000) {
   toast.textContent = msg
   toast.classList.add('visible')
-  setTimeout(() => toast.classList.remove('visible'), duration)
+  // Single shared element: cancel any pending hide so a later toast isn't
+  // stripped early by an earlier (e.g. long-duration) timer.
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.classList.remove('visible'); toastTimer = null }, duration)
 }
 
 // === Agents API ===
@@ -10036,6 +10040,33 @@ function openFilesLightbox(root, path, name) {
   openModal(document.getElementById('filesLightbox'))
 }
 
+// Upload each picked/dropped file as a raw POST body (filename in ?name=). The
+// global fetch wrapper adds the Bearer header; the browser streams the File.
+async function uploadFiles(fileList) {
+  const files = Array.from(fileList || [])
+  if (!files.length) return
+  showToast(`Feltöltés: ${files.length} fájl…`, 60000)
+  let ok = 0
+  const errs = []
+  for (const file of files) {
+    try {
+      const p = new URLSearchParams({ root: filesState.root, path: filesState.path, name: file.name })
+      const res = await fetch('/api/files/upload?' + p.toString(), { method: 'POST', body: file })
+      const data = await res.json().catch(() => ({}))
+      if (data.ok) ok++
+      else errs.push(`${file.name}: ${data.error || ('HTTP ' + res.status)}`)
+    } catch {
+      // fetch rejects (connection reset etc.) -> often a size/connection issue
+      errs.push(`${file.name}: hálózati hiba (méret/kapcsolat?)`)
+    }
+  }
+  // Surface the first concrete reason in the summary instead of flashing one
+  // toast per file (which the next iteration would immediately overwrite).
+  if (errs.length) showToast(`Feltöltve: ${ok}, hiba: ${errs.length} — ${errs[0]}`, 6000)
+  else showToast(`Feltöltve: ${ok}`)
+  loadFiles()
+}
+
 // Root switcher + lightbox close wiring (once at load; the elements live in the
 // always-present #filesPage / #filesLightbox markup).
 document.querySelectorAll('.files-root-btn').forEach(btn => {
@@ -10048,6 +10079,18 @@ document.querySelectorAll('.files-root-btn').forEach(btn => {
 })
 document.getElementById('filesFilter')?.addEventListener('input', applyFilesView)
 document.getElementById('filesSort')?.addEventListener('change', applyFilesView)
+document.getElementById('filesUploadBtn')?.addEventListener('click', () => document.getElementById('filesUploadInput')?.click())
+document.getElementById('filesUploadInput')?.addEventListener('change', (e) => { uploadFiles(e.target.files); e.target.value = '' })
+;(() => {
+  const grid = document.getElementById('filesGrid')
+  if (!grid) return
+  grid.addEventListener('dragover', (e) => { e.preventDefault(); grid.classList.add('files-dragover') })
+  grid.addEventListener('dragleave', (e) => { if (e.target === grid) grid.classList.remove('files-dragover') })
+  grid.addEventListener('drop', (e) => {
+    e.preventDefault(); grid.classList.remove('files-dragover')
+    if (e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files)
+  })
+})()
 ;(() => {
   const lb = document.getElementById('filesLightbox')
   if (!lb) return

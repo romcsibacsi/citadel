@@ -1227,10 +1227,11 @@
             <h1>Fájlok</h1>
             <p class="subtitle">Generált képek és feltöltések — beágyazott fájlkezelő</p>
           </div>
-          <a class="btn-secondary btn-compact" href="http://192.168.1.105:8102/" target="_blank" rel="noopener" title="Haladó kezelés (feltöltés, átnevezés) a Filestash-ben">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            Filestash
-          </a>
+          <button class="btn-primary btn-compact" id="filesUploadBtn" type="button" title="Fájl(ok) feltöltése az aktuális mappába">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Feltöltés
+          </button>
+          <input type="file" id="filesUploadInput" multiple hidden>
         </div>
       </div>
       <div class="files-toolbar">
