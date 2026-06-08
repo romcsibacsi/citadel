@@ -10,7 +10,7 @@ import {
   decideSubmitFollowup,
   shouldClearTruncatedPreamble,
 } from '../pane-state.js'
-import { agentDir, readAgentModel, readAgentSecurityProfile, readAgentClaudeConfigDir, readAgentChannelProvider, readAgentAuthMode, readAgentDisplayName } from './agent-config.js'
+import { agentDir, readAgentModel, readAgentSecurityProfile, readAgentClaudeConfigDir, readAgentChannelProvider, readAgentAuthMode, readAgentDisplayName, readAgentStrictMcp } from './agent-config.js'
 import { parseTelegramToken } from './telegram.js'
 import { getProvider, getProviderType, channelStateDir, readChannelToken, type ChannelProviderType } from '../channel-provider.js'
 import { CHANNEL_PROVIDER } from '../config.js'
@@ -188,9 +188,13 @@ export function startAgentProcess(name: string, opts: { fresh?: boolean } = {}):
       ? `export ${stateEnvVar}="${agentChannelDir}" && `
       : ''
     const channelFlag = hasChannel ? `--channels plugin:${provider.pluginId}` : ''
+    // strictMcp: restrict the agent to ONLY its own project .mcp.json (ignore the
+    // operator's user-scope MCP servers). Keeps a tool-restricted agent -- e.g. a
+    // local-model image agent -- from wandering into unrelated tools.
+    const strictMcpFlag = readAgentStrictMcp(name) ? `--strict-mcp-config --mcp-config "${join(dir, '.mcp.json')}" ` : ''
     // Single-quote `${model}` so values like `claude-opus-4-8[1m]` (1M-context
     // suffix) are not glob-expanded by the shell that tmux spawns the command in.
-    const cmd = `export PATH="/opt/homebrew/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH" && ${unsetTokens} && ${channelSetup}${apiKeyEnv}${claudeConfigEnv}${ollamaEnv}${deepseekEnv}cd "${dir}" && ${CLAUDE} ${continueFlag}${skipFlag}--model '${model}' ${channelFlag}`.trimEnd()
+    const cmd = `export PATH="/opt/homebrew/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH" && ${unsetTokens} && ${channelSetup}${apiKeyEnv}${claudeConfigEnv}${ollamaEnv}${deepseekEnv}cd "${dir}" && ${CLAUDE} ${continueFlag}${skipFlag}${strictMcpFlag}--model '${model}' ${channelFlag}`.trimEnd()
     execSync(
       `${TMUX} new-session -d -s ${session} "${cmd}"`,
       { timeout: 10000 }

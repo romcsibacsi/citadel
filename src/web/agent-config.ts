@@ -64,6 +64,20 @@ export function readAgentModel(name: string): string {
   }
 }
 
+// When agent-config.json sets strictMcp:true, the launcher passes
+// --strict-mcp-config + --mcp-config <agent>/.mcp.json so the agent sees ONLY
+// its own project MCP servers, not the operator's user-scope ones (~/.claude.json).
+// Used for focused tool-restricted agents -- e.g. a local-model image agent that
+// must reliably pick the comfy tool and not wander into the vault/workspace MCPs.
+export function readAgentStrictMcp(name: string): boolean {
+  try {
+    const config = JSON.parse(readFileOr(join(agentDir(name), 'agent-config.json'), '{}'))
+    return (config as Record<string, unknown>).strictMcp === true
+  } catch {
+    return false
+  }
+}
+
 export function writeAgentModel(name: string, model: string): void {
   const configPath = join(agentDir(name), 'agent-config.json')
   let config: Record<string, unknown> = {}

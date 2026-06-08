@@ -1,6 +1,6 @@
 {
   "displayName": "MUSE",
-  "model": "qwen3:14b",
+  "model": "muse-brain:latest",
   "securityProfile": "media",
   "accent": "#a855f7",
   "team": {
@@ -9,5 +9,6 @@
     "delegatesTo": [],
     "autoDelegation": false,
     "trustFrom": []
-  }
+  },
+  "strictMcp": true
 }
