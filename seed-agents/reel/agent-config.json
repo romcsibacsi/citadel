@@ -1,0 +1,14 @@
+{
+  "displayName": "REEL",
+  "model": "muse-brain:latest",
+  "securityProfile": "media",
+  "accent": "#14b8a6",
+  "strictMcp": true,
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}

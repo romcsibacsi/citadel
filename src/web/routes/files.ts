@@ -13,6 +13,7 @@ import type { RouteContext } from './types.js'
 // and must never be added.
 const ROOTS: Record<string, string> = {
   comfy: join(PROJECT_ROOT, 'store', 'comfy'),
+  comfyvideo: join(PROJECT_ROOT, 'store', 'comfy-video'),
   incoming: join(homedir(), 'incoming'),
 }
 

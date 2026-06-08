@@ -9945,7 +9945,7 @@ function renderFilesBreadcrumb() {
     a.addEventListener('click', (e) => { e.preventDefault(); filesState.path = navPath; loadFiles() })
     return a
   }
-  bc.appendChild(mk(filesState.root === 'comfy' ? 'Képek' : 'Incoming', ''))
+  bc.appendChild(mk(({ comfy: 'Képek', comfyvideo: 'Videók', incoming: 'Incoming' })[filesState.root] || filesState.root, ''))
   let acc = ''
   for (const s of (filesState.path ? filesState.path.split('/').filter(Boolean) : [])) {
     acc = acc ? acc + '/' + s : s
@@ -9982,6 +9982,12 @@ function renderFiles(entries) {
       thumb.appendChild(img)
       thumb.style.cursor = 'zoom-in'
       thumb.addEventListener('click', () => openFilesLightbox(filesState.root, relPath, e.name))
+    } else if (/\.(mp4|webm|mov|mkv)$/i.test(e.name)) {
+      // Video: a film icon; clicking opens the raw URL inline (plays in a new tab).
+      thumb.className = 'files-thumb files-thumb--file'
+      thumb.innerHTML = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>'
+      thumb.style.cursor = 'pointer'
+      thumb.addEventListener('click', () => window.open(filesRawUrl(filesState.root, relPath, false), '_blank'))
     } else {
       thumb.className = 'files-thumb files-thumb--file'
       thumb.innerHTML = fileSvg

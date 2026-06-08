@@ -15,6 +15,8 @@ export const MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.avif': 'image/avif',
   '.bmp': 'image/bmp',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
 }
 
 // Default upper bound on a request body the dashboard will buffer in RAM.

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "comfyvideo": {
+      "command": "node",
+      "args": ["{{PROJECT_ROOT}}/dist/mcp/comfy-video-server.js"]
+    }
+  }
+}
