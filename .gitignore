@@ -32,8 +32,9 @@ test-results/
 # macOS
 .DS_Store
 
-# Generated from template (personal config)
-CLAUDE.md
+# Per-install generated agent CLAUDE.md lives under agents/ (already ignored
+# above). The root CLAUDE.md and seed-agents/*/CLAUDE.md are product templates
+# and MUST be tracked, so do NOT ignore CLAUDE.md globally.
 
 # Custom MCP servers and config (user-specific)
 mcp-servers/
