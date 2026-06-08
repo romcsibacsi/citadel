@@ -5449,7 +5449,9 @@ main {
   color: var(--text); font-size: 14px; font-family: inherit; resize: vertical; min-height: 70px;
 }
 .studio-textarea:focus { outline: none; border-color: var(--border-focus); }
-.studio-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.studio-presetbar { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.studio-preset-group { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.studio-preset-label { font-size: 11.5px; color: var(--text-muted); min-width: 92px; padding-top: 7px; }
 .studio-presets { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
 .studio-preset {
   padding: 6px 13px; border: 1px solid var(--border); background: var(--bg-card);
@@ -5457,7 +5459,9 @@ main {
 }
 .studio-preset:hover { background: var(--bg-card-hover); }
 .studio-preset.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.studio-controls .btn-primary { flex: 0 0 auto; width: auto; }
+.studio-preset--motion.active { background: #14b8a6; border-color: #14b8a6; }
+.studio-runrow { display: flex; justify-content: flex-end; margin-top: 12px; }
+.studio-runrow .btn-primary { flex: 0 0 auto; width: auto; }
 .studio-status { padding: 10px 14px; border-radius: 8px; background: var(--accent-soft); color: var(--text); font-size: 13px; margin-bottom: 14px; }
 .studio-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .studio-thumb { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; background: var(--bg-input); }

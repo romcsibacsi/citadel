@@ -1235,16 +1235,33 @@
       </div>
       <div class="studio-input-wrap">
         <textarea id="studioRequest" class="studio-textarea" rows="3" placeholder="Pl.: Csinálj 3 képet egy retró robotról különböző pózokban, majd fűzd őket egy diavetítés-videóba."></textarea>
-        <div class="studio-controls">
-          <div class="studio-presets" id="studioPresets">
-            <button class="studio-preset" type="button" data-style="fotorealisztikus, éles fókusz, természetes fény, 85mm">Fotorealisztikus</button>
-            <button class="studio-preset" type="button" data-style="filmes hangulat, nagy kontraszt, drámai fény, cinematic">Filmes</button>
-            <button class="studio-preset" type="button" data-style="anime stílus, élénk színek, tiszta vonalak">Anime</button>
-            <button class="studio-preset" type="button" data-style="digitális festmény, ecsetvonások, művészi">Festmény</button>
-            <button class="studio-preset" type="button" data-style="3D render, részletes, oktane render">3D render</button>
-            <button class="studio-preset" type="button" data-style="retró, vintage, 70-es évek színvilág">Retró</button>
-            <button class="studio-preset" type="button" data-style="fekete-fehér, film noir, erős árnyékok">Noir</button>
+        <div class="studio-presetbar">
+          <div class="studio-preset-group">
+            <span class="studio-preset-label">Stílus</span>
+            <div class="studio-presets">
+              <button class="studio-preset" type="button" data-style="fotorealisztikus, éles fókusz, természetes fény, 85mm">Fotorealisztikus</button>
+              <button class="studio-preset" type="button" data-style="filmes hangulat, nagy kontraszt, drámai fény, cinematic">Filmes</button>
+              <button class="studio-preset" type="button" data-style="anime stílus, élénk színek, tiszta vonalak">Anime</button>
+              <button class="studio-preset" type="button" data-style="digitális festmény, ecsetvonások, művészi">Festmény</button>
+              <button class="studio-preset" type="button" data-style="3D render, részletes, oktane render">3D render</button>
+              <button class="studio-preset" type="button" data-style="retró, vintage, 70-es évek színvilág">Retró</button>
+              <button class="studio-preset" type="button" data-style="fekete-fehér, film noir, erős árnyékok">Noir</button>
+            </div>
           </div>
+          <div class="studio-preset-group">
+            <span class="studio-preset-label">Mozgás (videó)</span>
+            <div class="studio-presets">
+              <button class="studio-preset studio-preset--motion" type="button" data-style="lassú ráközelítés a kamerával">Ráközelítés</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="a kamera lassan kihúz/távolodik">Kihúzás</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="követő kameramozgás, a kamera követi az alanyt">Követő snitt</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="körkörös kameramozgás az alany körül">Körbe</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="lassú oldalpanoráma a kamerával">Panoráma</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="statikus kamera, csak az alany mozog">Statikus</button>
+              <button class="studio-preset studio-preset--motion" type="button" data-style="enyhe kézikamera-mozgás, dokumentarista">Kézikamera</button>
+            </div>
+          </div>
+        </div>
+        <div class="studio-runrow">
           <button class="btn-primary btn-compact" id="studioRunBtn" type="button">Indítás</button>
         </div>
       </div>
