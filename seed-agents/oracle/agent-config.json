@@ -1,0 +1,13 @@
+{
+  "displayName": "ORACLE",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "researcher",
+  "accent": "#d4af37",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}

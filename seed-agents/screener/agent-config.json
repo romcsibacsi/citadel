@@ -1,0 +1,13 @@
+{
+  "displayName": "SCREENER",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "media",
+  "accent": "#22c55e",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}

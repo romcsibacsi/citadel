@@ -1,0 +1,53 @@
+# Dependencies & build
+node_modules/
+dist/
+
+# Python bytecode cache (e.g. scripts/hooks/__pycache__/*.pyc)
+__pycache__/
+*.pyc
+
+# Secrets & personal data
+.env
+store/
+workspace/
+agents/
+reports/
+.claude/
+!.claude/settings.json
+.config/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+*.pid
+
+# Test artifacts
+test-results/
+.playwright-mcp/
+
+# macOS
+.DS_Store
+
+# Generated from template (personal config)
+CLAUDE.md
+
+# Custom MCP servers and config (user-specific)
+mcp-servers/
+.mcp.json
+mcp-catalog.local.json
+
+# Personal/project-specific docs (not part of the product)
+# Old rebuild prompts (keep V3 which is the current one)
+REBUILD_PROMPT.md
+REBUILD_PROMPT_V2.md
+alkuszokatas_dashboard.md
+napindito-prompt.md
+scheduled-tasks.json
+citadel.log
+
+# Local backup archives from scripts/backup.sh
+backups/

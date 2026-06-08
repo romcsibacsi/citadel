@@ -1,0 +1,670 @@
+{
+  "summary": "Phase 0: read-only architecture map of the upstream repo to base the CITADEL rebuild on",
+  "agentCount": 7,
+  "logs": [],
+  "result": [
+    {
+      "subsystem": "Claude invocation paths in CITADEL framework",
+      "purpose": "Map the two distinct Claude invocation paths: (a) interactive tmux-based agents with channel support via tmux respawn-pane; (b) headless SDK-spawned agents for background tasks (heartbeat, daily digest). The system requires keeping interactive agents on the subscription pool while replacing the SDK heartbeat with a hybrid triage that escalates via the interactive path.",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/agent.ts",
+          "role": "SDK headless wrapper - query() from @anthropic-ai/claude-agent-sdk at line 1, runAgent() exported at line 107, spawns isolated claude processes via SDK"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/heartbeat.ts",
+          "role": "Legacy hourly heartbeat using SDK headless path via runAgent() at line 514; now deprecated in favor of scheduled heartbeat agent (see index.ts lines 434-448)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/memory.ts",
+          "role": "Daily digest sub-agent using SDK headless path via runAgent() at line 193 with isolated cwd/config"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-monitor.ts",
+          "role": "Interactive tmux main agent supervisor - buildMainSessionRespawnCmd() at line 183, resumeNexusSession() at line 208 using tmux respawn-pane -k at line 242, hardRestartNexusChannels() at line 440"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-process.ts",
+          "role": "Sub-agent lifecycle management - startAgentProcess() at line 69 spawns tmux sessions with claude --model --channels flags, calls reapChannelOrphans() at line 104"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/main-agent.ts",
+          "role": "Main agent metadata - defines MAIN_CHANNELS_SESSION session name at line 9, MAIN_CHANNELS_PLIST launchd plist path at line 14"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/schedule-runner.ts",
+          "role": "Scheduled task executor - attemptFireTask() at line 88 injects prompts into tmux sessions via sendPromptToSession()"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/heartbeat-agent-scaffold.ts",
+          "role": "Heartbeat sub-agent bootstrap - creates agents/heartbeat/ directory with isolated .claude/settings.json, disables channel plugins, uses claude-haiku-4-5 at line 75 (not the SDK headless path)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/index.ts",
+          "role": "Dashboard lifecycle and initialization - imports heartbeat but no longer calls initHeartbeat() (lines 434-448 explain deprecation), starts scheduled-task runner for heartbeat sub-agent instead"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/scripts/channels.sh",
+          "role": "Main agent launch script - shell wrapper that spawns tmux session with claude --channels --model flags (line 197 context), called by launchd KeepAlive"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/package.json",
+          "role": "SDK dependency declaration - @anthropic-ai/claude-agent-sdk at version 0.2.117 (line 20; note: package name unchanged as of June 2026)"
+        }
+      ],
+      "keySymbols": [
+        "agent.ts:1 - import { query } from '@anthropic-ai/claude-agent-sdk'",
+        "agent.ts:107 - export async function runAgent(message, sessionId?, onTyping?, allowTools, cwd, env)",
+        "agent.ts:129 - const events = query({ prompt, options: { abortController, cwd, permissionMode, ... } })",
+        "agent.ts:143-144 - newSessionId = event.sessionId when event.type === 'system' && subtype === 'init'",
+        "heartbeat.ts:514 - const { text } = await runAgent(prompt, undefined, undefined, false, HEARTBEAT_AGENT_CWD, { CLAUDE_CONFIG_DIR })",
+        "memory.ts:193 - const { text } = await runAgent(prompt, undefined, undefined, false, digestCwd, { CLAUDE_CONFIG_DIR })",
+        "channel-monitor.ts:183 - export function buildMainSessionRespawnCmd(opts)",
+        "channel-monitor.ts:197 - `--channels plugin:${opts.pluginId}`",
+        "channel-monitor.ts:208 - export function resumeNexusSession(): boolean",
+        "channel-monitor.ts:242 - execFileSync(TMUX, ['respawn-pane', '-k', '-t', MAIN_CHANNELS_SESSION, claudeCmd])",
+        "channel-monitor.ts:440 - export function hardRestartNexusChannels(): { ok: boolean; error?: string }",
+        "agent-process.ts:69 - export function startAgentProcess(name, opts)",
+        "agent-process.ts:197 - `--channels plugin:${opts.pluginId}`",
+        "main-agent.ts:9 - export const MAIN_CHANNELS_SESSION = `${MAIN_AGENT_ID}-channels`",
+        "heartbeat-agent-scaffold.ts:75 - model: 'claude-haiku-4-5'",
+        "heartbeat-agent-scaffold.ts:59-63 - CHANNEL_PLUGIN_DISABLES array disabling telegram, slack, discord",
+        "schedule-runner.ts:88 - function attemptFireTask(task, agentName, now)",
+        "schedule-runner.ts:98 - sendPromptToSession(session, task.prompt)",
+        "index.ts:448 - if (shouldBootHeartbeatAgent({ respawnEnabled, agentEnabled }))",
+        "package.json:20 - '@anthropic-ai/claude-agent-sdk': '^0.2.117'",
+        "web/agent-config.ts:14 - 'opus': 'claude-opus-4-8[1m]'"
+      ],
+      "howItWorks": "**Path A - Interactive Tmux Agents (Main + Sub-agents):**\nThe main agent (\"nexus-channels\") is launched via launchd/systemd supervisor running scripts/channels.sh, which spawns `tmux new-session` with `claude --channels plugin:<id> --model <model>` running interactively in a pane. The channel-monitor.ts watches this session's pane state via tmux capture-pane; when the channel plugin dies or the pane wedges, it executes `tmux respawn-pane -k` with buildMainSessionRespawnCmd() to replace only the claude process in the existing pane, optionally with `--continue` to resume prior conversation context. Sub-agents follow the same pattern via agent-process.ts:startAgentProcess(), which spawns `agent-<name>` tmux sessions with channel tokens read from their agent-config.json. Both paths skip the SDK entirely.\n\n**Path B - Headless SDK-Spawned Agents (Legacy & Background):**\nThe agent.ts:runAgent() function wraps the @anthropic-ai/claude-agent-sdk query() API, launching isolated Claude processes with no tmux container. It accepts a prompt, optional sessionId to resume prior inference, and a cwd (isolated from PROJECT_ROOT to prevent plugin collision). The SDK detects libc via execSync('ldd --version') and selects the correct platform-specific binary from node_modules/@anthropic-ai/claude-agent-sdk-<variant>/claude. Events stream asynchronously; on event.type==='system' with subtype==='init', it captures the new sessionId for multi-turn conversations. Two use cases: (1) heartbeat.ts:executeHeartbeat() (deprecated as of 2026-06-02 index.ts lines 434-448) fires runAgent() hourly with an isolated HEARTBEAT_AGENT_CWD and CLAUDE_CONFIG_DIR (symlinks to ~/.claude/ but override settings.json to disable channel plugins, preventing 409 Conflict with main agent's poller); (2) memory.ts:runDailyDigest() runs runAgent() at 23:00 with an isolated digestCwd under ~/.claude/tmp/ and digestConfigDir, same isolation pattern. Both paths set permissionMode: 'bypassPermissions' and disallowedTools to prevent file writes.\n\n**Hybrid Future (CITADEL requirement):**\nThe new heartbeat-agent-scaffold.ts creates a dedicated \"heartbeat\" sub-agent under agents/heartbeat/, materializing CLAUDE.md, agent-config.json (model: claude-haiku-4-5), and an isolated .claude/settings.json with enabledPlugins: {} disabled. This agent is NOT spawned via the SDK -- it runs as a regular tmux interactive session (like sub-agents) and is driven by the schedule-runner.ts scheduled-task system, which injects the heartbeat prompt via sendPromptToSession() each hour. This escalates heartbeat processing from an isolated headless SDK call back onto the interactive subscription pool, keeping the main agent's inbound stream alive and eliminating the 409 Conflict self-loop. The legacy SDK heartbeat path remains importable (index.ts line 15) but initHeartbeat() is never called; scheduled tasks replace it entirely. Legacy SDK paths (daily digest via runAgent) remain in place but are candidate for similar migration.",
+      "citadelImpact": "CITADEL rebuild must: (1) Keep interactive tmux agents (main + sub-agents) on the subscription pool unchanged -- they use `claude --channels` flags, tmux respawn-pane for recovery, and zero SDK dependency. (2) Remove or replace the legacy SDK-spawned heartbeat path (src/heartbeat.ts) entirely -- migration to scheduled heartbeat-agent is already complete in current code (initHeartbeat never called from index.ts). Daily digest via SDK (memory.ts:runDailyDigest) can remain as a fallback for now but is a candidate for future tmux-migration. (3) Verify the @anthropic-ai/claude-agent-sdk package name is still correct (currently @anthropic-ai/claude-agent-sdk@0.2.117, unchanged since June 2026) and obtain the live model ID for non-Haiku headless calls (currently claude-opus-4-8[1m] with 1M context is the primary model per web/agent-config.ts:14; Haiku for heartbeat per heartbeat-agent-scaffold.ts:75). (4) Real file paths differ from spec: the true SDK wrapper is src/agent.ts (not src/agents.ts), heartbeat lives in src/heartbeat.ts (not src/scheduler/heartbeat), and channel respawn logic is in src/web/channel-monitor.ts (not src/tmux-manager.ts). The heartbeat sub-agent bootstrap is src/web/heartbeat-agent-scaffold.ts, not a separate agent-spawn module.",
+      "invariantsRisks": "**Invariants that must not break:** (1) The main agent's channel plugin must remain the sole poller for the operator's bot token -- no concurrent pollers from sub-agents or background tasks (enforced by isolated CLAUDE_CONFIG_DIR with enabledPlugins:{} override in heartbeat.ts:49 and heartbeat-agent-scaffold.ts:59-63). (2) The tmux respawn-pane recovery path must preserve session state and attached clients (channel-monitor.ts:241-242 uses `respawn-pane -k` without `kill-session`, so a user's terminal attach survives; if accidentally changed to kill-session, user sees [exited] crash). (3) The agent.ts classifyAgentResult() function must reject AUP blocks and API errors as non-usable (agent.ts:46-66) so callers' `if (!text) throw` guard fires and corrupted files are prevented. (4) Scheduled tasks must write to the correct target tmux session (schedule-runner.ts:88-94 uses agentSessionName derivation and MAIN_CHANNELS_SESSION special-case; if channel name changes, tasks fire to the wrong session). **Regression risks when modifying:** Replacing the SDK headless heartbeat with scheduled heartbeat-agent has been done (index.ts 434-448 fully explains deprecation) but the old runAgent() path in heartbeat.ts must remain importable even if unused (tests, IDE references). Removing agent.ts or changing the query() import would break memory.ts daily digest. The classifyAgentResult() classification logic is subtle (subtype !== 'success', is_error, api_error_status) and must not be simplified to text-only checks (issue #209 documents why). Changing HEARTBEAT_CONFIG_DIR symlink strategy to use CLAUDE_CODE_OAUTH_TOKEN env-var instead of .credentials.json will regress macOS auth (heartbeat.ts:245-248 explains why the env-var approach failed with 401, config-dir .credentials.json path is what Claude Code expects on Linux)."
+    },
+    {
+      "subsystem": "Channel Providers & Channels Plugin Mechanism",
+      "purpose": "Manages bidirectional communication with Discord, Telegram, and (currently) Slack via Claude Code's channel plugins. Provides provider abstraction for token validation, message formatting, photo uploads, and notification delivery. The system is used by heartbeat escalations, alerts, and task completions to send one-way push notifications to the operator.",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/channel-provider.ts",
+          "role": "Core provider registry and API interface. Defines ChannelProviderType ('telegram'|'slack'|'discord'), ChannelProvider interface, three provider implementations (telegramProvider, slackProvider, discordProvider), helper functions getProvider(), getChannelToken(), getChannelChatId(), readChannelToken(), Slack manifest generation, and token validation methods."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/config.ts",
+          "role": "Environment loading and provider selection. Exports CHANNEL_PROVIDER type, TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_ID, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_CHANNEL_ID via getProviderType() and getChannel* helpers."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/notify.ts",
+          "role": "Notification dispatch to the active channel. Uses getProvider(CHANNEL_PROVIDER) to format, split, and send messages. Called by heartbeat.ts for operator alerts."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/heartbeat.ts",
+          "role": "Hourly summary agent that sends notifications via notifyTelegram (alias for notifyChannel). Disables all three channel plugins in the heartbeat sub-agent's isolated config to prevent 409 Conflict on getUpdates."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/agents.ts",
+          "role": "HTTP API for channel setup, testing, deletion. Endpoints POST/DELETE /api/agents/:name/channels/:provider, POST /test, GET/POST Slack manifest. VALID_PROVIDERS = {'telegram', 'slack', 'discord'}. Sets enabledPlugins per provider and calls hardRestartNexusChannels()."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-invites.ts",
+          "role": "One-click invite token system for pairing. Monitors access.json + invites.json sidecar. Line 192: providerTypes hardcoded to ['telegram', 'slack'] (no discord)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/telegram.ts",
+          "role": "Telegram-specific helpers: readAgentTelegramConfig, readNexusTelegramConfig, readNexusDiscordConfig, readNexusSlackConfig, sendTelegramMessage, sendTelegramPhoto, sendWelcomeMessage (Telegram only), sendNexusAvatarChange (Telegram only)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/channel-coordinator.ts",
+          "role": "Standalone Telegram inbound backfill safety-net. Polls getUpdates during native plugin downtime. Imports from channel-coordinator/telegram-client.ts. Hardcoded SOURCE='telegram'. Used only for Telegram recovery."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/scripts/channels.sh",
+          "role": "Main agent channel session launcher (tmux + Claude Code --channels). Lines 41-45: plugin ID resolution per CHANNEL_PROVIDER. Lines 117-120: STATE_ENV_VAR per provider. Lines 64-67: clears TELEGRAM/SLACK/DISCORD tokens from tmux global env. Line 291: bot menu setup Telegram-only."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-monitor.ts",
+          "role": "Dashboard in-process monitor for plugin health + recovery. Uses getProvider() to access provider metadata (pluginId, pluginPaneId, stateDir, envKeys). Watches channel sessions for crashes and triggers restarts."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-poller-reap.ts",
+          "role": "Reaps orphan channel plugin processes. Line 21-23: STATE_ENV_VAR map {'telegram': 'TELEGRAM_STATE_DIR', 'slack': 'SLACK_STATE_DIR', 'discord': 'DISCORD_STATE_DIR'}."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-process.ts",
+          "role": "Sub-agent process lifecycle. Uses getProvider(), getProviderType(), channelStateDir(), readChannelToken(). Resolves agent's provider and enables appropriate plugin in settings.json."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/channel-coordinator/telegram-client.ts",
+          "role": "Telegram API client for getUpdates, getMe, token validation. Used only by channel-coordinator.ts for backfill."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/format.ts",
+          "role": "Message formatting. formatForTelegram() converts markdown to HTML; splitMessage() enforces 4096 char limit. Used by provider formatMessage() methods."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/__tests__/slack-manifest.test.ts",
+          "role": "Tests for Slack app manifest generation and setup instructions."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/__tests__/channel-provider.test.ts",
+          "role": "Tests for provider registration, token/chatId resolution, formatting (Telegram HTML, Slack mrkdwn), message splitting."
+        }
+      ],
+      "keySymbols": [
+        "channel-provider.ts:8 - export type ChannelProviderType = 'telegram' | 'slack' | 'discord'",
+        "channel-provider.ts:10-22 - export interface ChannelProvider (type, pluginId, pluginPaneId, envKeys, stateDir, chatIdFormat, sendMessage, sendPhoto, validateToken, formatMessage, splitMessage)",
+        "channel-provider.ts:52-103 - const telegramProvider: ChannelProvider",
+        "channel-provider.ts:133-227 - const slackProvider: ChannelProvider (lines 113-131 formatForSlackMrkdwn helper, lines 314-374 Slack scopes/events/manifest generation)",
+        "channel-provider.ts:242-310 - const discordProvider: ChannelProvider",
+        "channel-provider.ts:392-396 - const providers: Record<ChannelProviderType, ChannelProvider> = { telegram: ..., slack: ..., discord: ... }",
+        "channel-provider.ts:398-400 - export function getProvider(type: ChannelProviderType): ChannelProvider",
+        "channel-provider.ts:378-388 - getChannelToken(), getChannelChatId() (conditional returns per provider)",
+        "channel-provider.ts:408-427 - channelStateDir(), readChannelToken() (state directory resolution)",
+        "config.ts:38-40 - CHANNEL_PROVIDER = getProviderType(env['CHANNEL_PROVIDER']), CHANNEL_TOKEN, CHANNEL_CHAT_ID",
+        "notify.ts:5-25 - export async function notifyChannel(text), export const notifyTelegram (alias)",
+        "heartbeat.ts:61-65 - const HEARTBEAT_DISABLED_PLUGINS = ['telegram@claude-plugins-official', 'slack-channel@claude-plugins-official', 'discord@claude-plugins-official']",
+        "heartbeat.ts:518 - await notifyTelegram(text)",
+        "agents.ts:99 - const VALID_PROVIDERS = new Set<ChannelProviderType>(['telegram', 'slack', 'discord'])",
+        "agents.ts:114-132 - parseChannelProvider(), matchChannelRoute() (legacy /telegram/ + new /channels/:provider/ URL parsing)",
+        "agents.ts:178-197 - export function setAgentEnabledPlugins(name, provider) - sets enabledPlugins in agent's settings.json",
+        "agents.ts:209-214 - resolveAccessPath() (returns path to access.json per provider)",
+        "agents.ts:637-728 - POST /api/agents/:name/channels/:provider setup endpoint",
+        "agents.ts:730-743 - DELETE /api/agents/:name/channels/:provider removal",
+        "agents.ts:550-561 - GET /api/agents/:name/channels/slack/manifest (Slack only)",
+        "agents.ts:563-591 - POST /api/agents/:name/channels/slack/smoke-test (Slack only)",
+        "channel-invites.ts:122-158 - export function createInvite() (Telegram deep-link generation only)",
+        "channel-invites.ts:192 - const providerTypes: ChannelProviderType[] = ['telegram', 'slack'] (NO discord)",
+        "telegram.ts:52-57 - export function readNexusSlackConfig(): { hasSlack: boolean }",
+        "scripts/channels.sh:41-45 - PLUGIN_ID resolution per CHANNEL_PROVIDER",
+        "scripts/channels.sh:64-67 - tmux unset TELEGRAM_BOT_TOKEN SLACK_BOT_TOKEN DISCORD_BOT_TOKEN",
+        "scripts/channels.sh:115-120 - STATE_ENV_VAR per provider (TELEGRAM_STATE_DIR | SLACK_STATE_DIR | DISCORD_STATE_DIR)",
+        "scripts/channels.sh:291 - Telegram-only bot menu setup"
+      ],
+      "howItWorks": "The channel system is a three-tier abstraction for plugging agent outbound notifications into Claude Code's built-in channel plugins (Telegram, Discord, Slack). At startup, the config layer (config.ts) reads CHANNEL_PROVIDER from .env and instantiates the corresponding provider object (getProvider). Each provider encapsulates: pluginId (used to filter MCP connections), stateDir (~/.claude/channels/<provider>), envKeys (token sources), and methods for token validation, message formatting (Telegram=HTML, Slack=mrkdwn, Discord=GFM), and API calls (sendMessage, sendPhoto). The notify.ts layer calls getProvider(CHANNEL_PROVIDER) and dispatches notifications (used by heartbeat hourly summaries, task alerts, escalations). The web route layer (agents.ts) handles per-agent channel configuration via POST/DELETE endpoints; it manages enabledPlugins in agent settings.json to load only the selected provider's plugin. The channels.sh tmux launcher reads CHANNEL_PROVIDER and resolves the appropriate PLUGIN_ID for the --channels flag. The liveness/recovery subsystems (channel-monitor.ts, channel-poller-reap.ts) use provider metadata to track plugin health and perform restarts. Special case: Telegram has an additional standalone backfill coordinator (channel-coordinator.ts + telegram-client.ts) that polls getUpdates when the native plugin is down to prevent message loss during plugin crashes.",
+      "citadelImpact": "CITADEL spec requires: (1) REMOVE Slack provider entirely from ChannelProviderType, slackProvider object, providers registry, and all Slack-specific code paths (manifest generation, smoke-test endpoint, setup instructions, scopes/events constants). (2) KEEP Telegram + Discord as bidirectional channel providers unchanged. (3) ADD ntfy as a new one-way push channel for heartbeat escalations, task completions, critical alerts. Ntfy is not a plugin—it's a simple HTTP POST to user-provided webhook URL. Files to modify: /home/uplinkfather/CITADEL/citadel/src/channel-provider.ts (remove slackProvider, update ChannelProviderType to 'telegram'|'discord', add ntfyProvider for push notifications), /home/uplinkfather/CITADEL/citadel/src/config.ts (remove SLACK_BOT_TOKEN/SLACK_APP_TOKEN/SLACK_CHANNEL_ID), /home/uplinkfather/CITADEL/citadel/src/web/routes/agents.ts (remove SLACK_ALLOWLIST_ENTRY, managed-settings checks, slack manifest/smoke-test endpoints, line 99 VALID_PROVIDERS), /home/uplinkfather/CITADEL/citadel/src/web/channel-invites.ts (line 192 update providerTypes, remove deepLink logic for Slack), /home/uplinkfather/CITADEL/citadel/src/web/telegram.ts (remove readNexusSlackConfig function), /home/uplinkfather/CITADEL/citadel/src/heartbeat.ts (line 61-65 remove slack from HEARTBEAT_DISABLED_PLUGINS, add ntfy push call), /home/uplinkfather/CITADEL/citadel/scripts/channels.sh (remove slack case branches, lines 64-67 clean up SLACK token), /home/uplinkfather/CITADEL/citadel/src/web/channel-poller-reap.ts (remove slack from STATE_ENV_VAR), /home/uplinkfather/CITADEL/citadel/src/__tests__/slack-manifest.test.ts (DELETE entire file), /home/uplinkfather/CITADEL/citadel/src/__tests__/channel-provider.test.ts (remove slack test cases), /home/uplinkfather/CITADEL/citadel/scripts/smoke-test-slack-channel.sh (DELETE entire file).",
+      "invariantsRisks": "Invariants: (1) CHANNEL_PROVIDER type must be validated before use in config.ts, all callsites assume valid type. (2) Each agent can have only ONE active channel provider (enabled in settings.json per agent). (3) Slack removal must also clean up: Slack-specific tests, manifest/smoke-test HTTP endpoints, managed-settings checks (macOS sandboxing), deepLink generation in invite tokens. (4) Ntfy push channel has different semantics (one-way, no reply/plugin pairing needed, no access.json state). Regression risks: (1) Removing Slack from VALID_PROVIDERS (agents.ts line 99) will 404 any existing /channels/slack/* API calls from the dashboard—those agent channels will become inaccessible until migrated. (2) Removing readNexusSlackConfig() breaks any dashboard code checking hasSlack. (3) Slack plugin ID 'slack-channel@claude-plugins-official' is referenced in heartbeat plugin disable list; removal is safe (heartbeat respawn will work fine without it). (4) channel-invites.ts line 192 iteration over ['telegram', 'slack'] will miss any pre-existing Slack invite tokens; recommend data migration or migration warning. (5) Removing formatForSlackMrkdwn() should not break Telegram/Discord (they use separate formatMessage methods). (6) The provider registry (providers: Record<ChannelProviderType, ChannelProvider>) acts as a runtime lookup; removing 'slack' key will cause getProvider('slack') to return undefined if called (safe if all entry points guard against invalid types, but risky if any stale code paths exist)."
+    },
+    {
+      "subsystem": "Web Dashboard (HTTP Server + Frontend SPA)",
+      "purpose": "CITADEL web dashboard provides a real-time agent orchestration UI accessible at http://localhost:3420. It serves static assets (index.html, app.js, style.css, avatar images), implements 50+ REST API endpoints for agent management/monitoring, and hosts a single-page application (SPA) with 19 distinct pages using theme switching (light/dark via data-theme) and localStorage-persisted bearer token authentication.",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web.ts",
+          "role": "HTTP server factory: creates Node http.Server on port 3420 (WEB_PORT from config), binds to 127.0.0.1, implements CORS/CSRF guards, auth gate with bearer token, dispatcher routing all requests through tryHandle* route modules, and SSE/EventSource for live agent pane streaming."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/index.ts",
+          "role": "Process entry point: manages pidfile/lock acquisition, signal handlers for graceful shutdown, database init, memory decay cycle, daily digest scheduler, heartbeat agent scaffold, starts web server via startWebServer(WEB_PORT)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/web/index.html",
+          "role": "Root HTML document (117KB): declares data-theme attribute on <html>, links /style.css and /app.js, defines sidebar nav with 19 data-page links, page divs with IDs (overviewPage, kanbanPage, agentsPage, etc.), xterm.js for terminal emulation."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/web/app.js",
+          "role": "Main SPA logic (390KB, 9557 lines): bootstrap token handling, theme toggle (data-theme), page switching via hash (#overview, #kanban, etc.), 30+ async page loaders, fetch interception to inject Authorization header, activity poller (3s), activity/kanban/schedule/memory/skill renderers."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/web/style.css",
+          "role": "Design system (118KB): CSS custom properties (data-theme light/dark), sidebar/nav styles, page layouts, modal/card components, mobile responsive (@media 768px), Anthropic design tokens (--accent, --danger, --success, --info colors)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/dashboard-auth.ts",
+          "role": "Auth token management: loadOrCreateDashboardToken() generates 32-byte hex token persisted at store/.dashboard-token (mode 0600) or reads DASHBOARD_TOKEN env var; checkBearerToken() timing-safe validates Authorization: Bearer XXX header."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/static.ts",
+          "role": "Static file router: serves /, /index.html, /style.css, /app.js, /avatars/* (20 PNG avatar images)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/types.ts",
+          "role": "RouteContext interface: { req, res, path, method, url } passed to every tryHandle* function, unifying the dispatcher protocol."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/http-helpers.ts",
+          "role": "HTTP utilities: json() response helper with Cache-Control headers, readBody() with 20MB default limit, serveFile() with ETag/304 conditional GET, MIME type map."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/agents.ts",
+          "role": "Agent CRUD + channels: GET/POST /api/agents, /api/agents/activity, /api/models/available, agent avatar upload/fetch, channel setup/test/reconnect, health/manifest, provider-specific endpoints."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/nexus.ts",
+          "role": "Main agent endpoint: GET /api/nexus returns { name, agentId, description, model, tmuxSession, running, autoRestart }, PUT to update config, POST /api/nexus/restart, /api/nexus/avatar GET/POST."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/overview.ts",
+          "role": "Dashboard summary: GET /api/overview returns stats (active agents, tasks today, memories, generated skills)."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/kanban.ts",
+          "role": "Kanban board: GET /api/kanban (cards), /api/kanban-projects, /api/kanban/assignees; POST /api/kanban to create/update card."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/schedules.ts",
+          "role": "Scheduled tasks: GET/POST /api/schedules, /api/schedules/agents, /api/schedules/pending, /api/schedules/expand-questions, /api/schedules/expand-prompt."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/memories.ts",
+          "role": "Agent memory base: GET/POST /api/memories, /api/memories/import, /api/memories/backfill, /api/memories/stats."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/agent-terminal.ts",
+          "role": "Live terminal stream: GET /api/agents/:name/pane/stream (SSE), POST /api/agents/:name/pane/keystroke, /api/agents/:name/pane/login with tmux capture-pane integration."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/connectors.ts",
+          "role": "MCP integration: GET/POST /api/connectors, /api/connectors/refresh, /api/connectors/status, /api/vault, /api/mcp-catalog, /api/ollama/models."
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/web/avatars/",
+          "role": "Avatar gallery: 20 PNG character images (01_robot.png through 20_alien.png) + gallery.html preview, served via /avatars/* route."
+        }
+      ],
+      "keySymbols": [
+        "src/web.ts:56 - export function startWebServer(port = 3420): http.Server",
+        "src/index.ts:476 - webServer = startWebServer(WEB_PORT)",
+        "src/web/dashboard-auth.ts:14 - export function loadOrCreateDashboardToken(): string",
+        "src/web/dashboard-auth.ts:29 - export function checkBearerToken(header: string | undefined, expected: string): boolean",
+        "web/app.js:16-58 - Token bootstrap from ?token= URL param to localStorage, fetch interceptor",
+        "web/app.js:60-73 - Theme toggle: html.getAttribute('data-theme'), localStorage.setItem('cc-theme')",
+        "web/app.js:79-103 - switchPage(pageId): hides pages, updates nav, calls page loaders",
+        "web/app.js:146-150 - startActivityPoll(): loads /api/agents/activity every 3s",
+        "src/web/routes/static.ts:6-22 - tryHandleStatic(): serves /, /style.css, /app.js, /avatars/*",
+        "src/web/routes/agents.ts:1-30+ - Agent CRUD routes with regex matches for :name parameter",
+        "src/web/routes/agent-terminal.ts:69-114 - SSE stream: /api/agents/:name/pane/stream with tmux capture",
+        "src/web/routes/nexus.ts:1-50+ - Main agent endpoint with MAIN_AGENT_ID/MAIN_CHANNELS_SESSION",
+        "web/style.css:2-47 - :root CSS vars (light) + [data-theme='dark'] overrides",
+        "src/config.ts:32-34 - WEB_PORT=3420, WEB_HOST=127.0.0.1, DASHBOARD_PUBLIC_URL"
+      ],
+      "howItWorks": "The dashboard launches on port 3420 (src/web.ts:startWebServer). On first visit, users access http://127.0.0.1:3420/?token=XXXX printed to stderr at startup; the token is saved to localStorage and stripped from the URL. All subsequent /api/* requests carry Authorization: Bearer XXXX in headers (injected by the fetch interceptor in app.js:27-58). The HTTP server implements a dispatcher pattern (src/web.ts:71-159): each request passes through ordered tryHandle* functions (profiles, messages, kanban, agents, etc.) until one returns true after writing a response. Static assets (index.html, app.js, style.css, /avatars/*) route through tryHandleStatic and bypass auth. The frontend is a single-page app (SPA) managing 19 pages via hash navigation (#overview, #kanban, #agents, etc.). Switching pages calls switchPage(pageId) which hides all .page divs, shows the target page, and invokes an async loader (loadOverview, loadKanban, loadAgents, etc.) to populate the page via REST calls. Theme switching reads/writes data-theme on the html element and persists the choice to localStorage, triggering CSS var re-evaluation. The terminal page streams live agent pane content via SSE (GET /api/agents/:name/pane/stream), capturing tmux pane output every 100ms and sending Server-Sent Events to xterm.js running in the browser. All agent operations (create, update, restart, channel config) flow through /api/agents endpoints which validate, execute, and return JSON responses.",
+      "citadelImpact": "CITADEL rebuild requires:\n1. **PWA Installability** - Add manifest.json (icons, display: 'standalone', start_url: '/'), register service worker (sw.js) for offline caching of index.html, app.js, style.css, avatars; serve manifest.json via /manifest.json route (add to static.ts).\n2. **Multi-Theme Runtime Switching** - Current implementation uses data-theme attribute with CSS vars, satisfies requirement; add explicit theme selector UI in a \"Tweaks\" panel (new sidebar footer button) to override system preference and store choice (already done via localStorage cc-theme).\n3. **Avatar/Glyphs System** - Already 20 avatar PNGs in web/avatars/ with /api/agents/:name/avatar GET/POST endpoints; add glyph rendering (icon badges for agent roles/status) via SVG sprites or emoji; expose avatar selection in agent creation UI (already supported in app.js agent card renderer).\n4. **Theme Switcher in Tweaks Panel** - Create new UI section (modal or sidebar panel) with theme radio buttons (light/dark/auto), display mode toggle (fullscreen/windowed), accessibility options; persist to localStorage alongside cc-theme.\n5. **Manifest + Service Worker** - Add web/manifest.json with app metadata, app icons (use avatar PNGs or generate new 192x192, 512x512 favicons), service worker (web/sw.js) caching strategy for offline-first SPA.\n\nFiles to create/modify:\n- web/manifest.json (new)\n- web/sw.js (new service worker with cache-first strategy for assets, network-first for /api/*)\n- src/web/routes/static.ts (add /manifest.json route)\n- web/index.html (add <link rel='manifest'>, register service worker in app.js)\n- web/app.js (enhance theme toggle to include Tweaks panel, auto-detect system preference fallback)\n- web/style.css (ensure theme vars cover PWA chrome, add Tweaks modal styles)",
+      "invariantsRisks": "**Invariants:**\n1. Bearer token must be constant-time compared to prevent timing attacks (checkBearerToken uses timingSafeEqual, do not simplify).\n2. All /api/* routes except /api/auth/status and /api/*/avatar (public GET) and /api/nexus/avatar must enforce bearer token auth (src/web.ts:114-122 auth gate).\n3. CORS origin whitelist (WEB_HOST, localhost:3420, DASHBOARD_PUBLIC_URL) must remain tight; POST/PUT/DELETE from foreign origins blocked at src/web.ts:89-93.\n4. SSE stream /api/agents/:name/pane/stream accepts token via ?token= query param (line 116), not header (EventSource limitation); this is the only /api/* route allowing query-param token, do not extend to other paths.\n5. Page switching uses hash navigation (#page-id), not pushState; hash-to-pageId mapping must remain stable to preserve browser history and bookmarking.\n6. Theme CSS var scope (root :root + [data-theme] selector) must not leak into vendor prefixes or media queries in a way that breaks dark mode in Safari/Firefox.\n7. Static assets served with ETag/304 conditional GET (http-helpers.ts:85-126); modifying serveFile cache logic may break browser caching and cause stale asset bugs.\n8. Agent avatar upload (multipart/form-data) requires specific content-type handling; multipart.ts parsing must remain compatible.\n\n**Regression Risks:**\n1. PWA service worker caching strategy must not cache /api/* responses (only assets); a cache-first strategy on API calls will cause stale data and out-of-sync UI (agents list, schedules, memories).\n2. Theme var color shifts (e.g., redefining --accent in dark mode) must not reduce contrast below WCAG AA for text on background; PWA icon rendering also depends on theme colors, ensure glyphs are readable in both themes.\n3. Manifest start_url and service worker scope must both be '/' to allow SPA hash navigation; mismatched scope can cause offline fallback to break page switching.\n4. Adding new sidebar pages (data-page links) without corresponding page div (id='*Page') and loader function will cause switchPage to silently fail; the switch page pattern has no validation.\n5. Bearer token rotation or environment variable changes require a server restart; the token is cached in localStorage on the client and will become stale if rotated on the server without clearing the store/.dashboard-token file.\n6. SSE stream /api/agents/:name/pane/stream leaks tmux internal pane names and session structure; do not expose raw tmux UUIDs or private paths in the stream unless you want agents scraped by reading pane data."
+    },
+    {
+      "subsystem": "Agent System (CITADEL)",
+      "purpose": "Scaffolds, manages, and orchestrates multi-agent teams with per-agent SOUL.md (personality) and CLAUDE.md (instructions), team-graph tracking (reportsTo/delegatesTo/trustFrom), inter-agent messaging via SQLite queue, and lifecycle control (start/stop/delete). Each agent runs in a tmux session with Claude Code, bounded by role-based security profiles (default/researcher/marketer/developer-junior/developer-senior). Agent spawning is gated to the main orchestrator only (no self-spawning); privilege escalation requires human approval; ephemeral/technical agents are hidden from dashboard via sentinel files.",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-scaffold.ts",
+          "role": "Core scaffolding: scaffoldAgentDir() creates directory structure, copies templates; generateClaudeMd/generateSoulMd generate AI instructions; writeAgentSettingsFromProfile applies security profile"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts",
+          "role": "Agent metadata persistence: agentDir(), readAgentModel(), readAgentSecurityProfile(), readAgentTeam(), listAgentNames(), isKnownAgent(); HIDDEN_AGENT_SENTINEL marks technical workers"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts",
+          "role": "Team graph: TeamConfig (role/reportsTo/delegatesTo/autoDelegation/trustFrom); readAgentTeam(), writeAgentTeam(), sanitizeTeamConfig() (scrubs self-refs + unknown agents), cleanupTeamReferences() (removes dangling refs on deletion)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/team-trust.ts",
+          "role": "Trust-gate for inter-agent messages: isTrustedPeer() checks (from/to) pair against reportsTo/delegatesTo/trustFrom + symmetric main-agent rule; wraps trusted peer messages differently from untrusted"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-process.ts",
+          "role": "Agent process lifecycle: startAgentProcess() (tmux spawn + pre-launch poller reap), stopAgentProcess(), isAgentRunning(), agentSessionName(), reapChannelOrphans() (sigterm then sigkill plugin pollers)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/message-router.ts",
+          "role": "Inter-agent message delivery: startMessageRouter() polls agent_messages table, wraps messages via isTrustedPeer(), delivers to target tmux session every 5s; abandons if target absent >1h"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/agents.ts",
+          "role": "REST API: POST /api/agents (create + generate CLAUDE.md/SOUL.md), GET /agents (list), PUT /agents/:name (edit), DELETE /agents/:name (delete + cleanup refs); notifies running agents of new member"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/profiles.ts",
+          "role": "Security profiles: loadProfileTemplate(), listProfileTemplates(), resolveProfilePlaceholders (HOME/AGENT_DIR substitution); profiles define filesystem allow/deny + permissionMode (strict vs permissive)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/db.ts",
+          "role": "Database tables: agent_messages (from_agent/to_agent/status/result), background_tasks (ephemeral work queue), scheduled_tasks (cron), kanban_cards, daily_logs, memories (hot/warm/cold); indices on agent/status"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/templates/profiles/",
+          "role": "5 security profiles: default (permissive fallback), researcher (read-only web + Downloads), marketer (web-safe + agent dir only), developer-junior (strict: agent dir + git/npm, no sudo/ssh/aws), developer-senior (permissive except keys + force-push)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/templates/CLAUDE.md.template",
+          "role": "Agent instructions template: memory system (hot/warm/cold + daily log API), inter-agent messaging API, skill generation, time handling (Europe/Budapest), first-unknown-sender gate + allowFrom allowlist"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/templates/SOUL.md.template",
+          "role": "Agent personality template: character, tone, language rules (Hungarian with owner, English for code), email signature (email only), no em-dash/AI clichés/excessive apology"
+        }
+      ],
+      "keySymbols": [
+        "scaffoldAgentDir():void /home/uplinkfather/CITADEL/citadel/src/web/agent-scaffold.ts:112",
+        "generateClaudeMd():Promise<string> /home/uplinkfather/CITADEL/citadel/src/web/agent-scaffold.ts:146",
+        "generateSoulMd():Promise<string> /home/uplinkfather/CITADEL/citadel/src/web/agent-scaffold.ts:300",
+        "writeAgentSettingsFromProfile():void /home/uplinkfather/CITADEL/citadel/src/web/agent-scaffold.ts:42",
+        "agentDir(name:string):string /home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts:20",
+        "listAgentNames():string[] /home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts:253",
+        "isKnownAgent(name:string):boolean /home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts:272",
+        "HIDDEN_AGENT_SENTINEL:string /home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts:251",
+        "readAgentTeam(name:string):TeamConfig /home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts:33",
+        "writeAgentTeam(name:string,team:TeamConfig):void /home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts:50",
+        "cleanupTeamReferences(removedName:string):void /home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts:115",
+        "isTrustedPeer(from:string,to:string,ctx:TrustContext):boolean /home/uplinkfather/CITADEL/citadel/src/team-trust.ts:55",
+        "startAgentProcess(name:string):object /home/uplinkfather/CITADEL/citadel/src/web/agent-process.ts:69",
+        "startMessageRouter():NodeJS.Timeout /home/uplinkfather/CITADEL/citadel/src/web/message-router.ts:74",
+        "shouldAbandon(sessionExists:boolean,ageMs:number,windowMs:number):boolean /home/uplinkfather/CITADEL/citadel/src/web/message-router.ts:68",
+        "loadProfileTemplate(id:string):ProfileTemplate /home/uplinkfather/CITADEL/citadel/src/web/profiles.ts:42",
+        "tryHandleAgents(ctx:RouteContext,webDir:string):Promise<boolean> /home/uplinkfather/CITADEL/citadel/src/web/routes/agents.ts:369",
+        "TeamConfig interface /home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts:13",
+        "ProfileTemplate interface /home/uplinkfather/CITADEL/citadel/src/web/profiles.ts:11"
+      ],
+      "howItWorks": "Agent creation flows through POST /api/agents endpoint (line 453, agents.ts). The handler sanitizes the name, scaffolds directory structure via scaffoldAgentDir() which creates .claude/{settings.json,skills,hooks}, memory/, and channel dirs, then applies the security profile template to settings.json. Next, it calls generateClaudeMd() and generateSoulMd() which invoke runAgent() with prompts to the local Claude Code instance to produce the agent's instructions and personality files, written atomically to agents/{name}/CLAUDE.md and agents/{name}/SOUL.md. On success, the system notifies the main agent and all running sub-agents via createAgentMessage('system', target, message) which enqueues the announcement into the agent_messages SQLite table. Agent metadata (model, security profile, displayName, team graph) is stored in agents/{name}/agent-config.json. The inter-agent message router (startMessageRouter, line 74 message-router.ts) polls the pending queue every 5 seconds; for each message, it checks isTrustedPeer() to decide wrapping (trusted vs untrusted), resolves the target agent's tmux session (agentSessionName for sub-agents, MAIN_CHANNELS_SESSION for orchestrator), and injects the message via sendPromptToSession if the session is idle. Messages age-out after 1 hour of target absence. Agent deletion (DELETE /api/agents/:name) removes the directory and calls cleanupTeamReferences() to update any agents that pointed to it via reportsTo/delegatesTo/trustFrom. The team-graph trust gate (isTrustedPeer, team-trust.ts line 55) is symmetric: reportsTo makes supervisor trusted to subordinate (and vice versa), delegatesTo grants one-way trust, trustFrom is an explicit override. The main agent is implicitly trusted to all. Technical agents can hide via HIDDEN_AGENT_SENTINEL (.hidden-from-dashboard) in their directory, suppressing them from listAgentNames() so they never appear on the dashboard or in routing.",
+      "citadelImpact": "CITADEL will replace the flexible scaffolding with a hardcoded 7-agent roster: NEXUS (hub/orchestrator), FORGE (code), SPARK (content), SIGMA (analysis), RELAY (integrations), SCREENER (filter/safety), ORACLE (knowledge). Each gets a fixed profile, SOUL.md, CLAUDE.md, and a slot in the team graph (reportsTo NEXUS except NEXUS itself). The current generic generateClaudeMd/generateSoulMd becomes load-from-file, pulling baked instructions from templates/agents/{AGENT_NAME}/. No more dynamic generation. The profile system (default/researcher/marketer/dev-junior/dev-senior) remains but restricted to the 7. Agent spawning prohibition is already code-enforced: only the main agent can call startAgentProcess via the dashboard API; sub-agents lack tmux/process permissions to spawn others. CITADEL adds hard-cap enforcement (≤7 in listAgentNames by design) and wraps new-spawn requests in human-approval workflow at dashboard level. Lifecycle: technical agents use HIDDEN_AGENT_SENTINEL (no change); ephemeral work uses background_tasks table (already present). The agent-creation endpoint (POST /api/agents) becomes restricted to admin UI, auto-reject if agent count ≥7 or agent name not in {NEXUS,FORGE,SPARK,SIGMA,RELAY,SCREENER,ORACLE}. Actual file paths: /home/uplinkfather/CITADEL/citadel/agents/ (agents base), templates/agents/{AGENT_NAME}/CLAUDE.md + /SOUL.md (baked instructions), src/web/routes/agents.ts (POST handler now rejects dynamic creation), src/web/agent-scaffold.ts (loadBakedInstructions function replaces generateClaudeMd), src/web/agent-team.ts (7-agent roster hardcoded in writeAgentTeam defaults). Agent deletion is disabled or requires explicit re-enable via CLI flag.",
+      "invariantsRisks": "Invariants: (1) Agent metadata in agent-config.json is source of truth for model/profile/displayName, CLAUDE.md/SOUL.md are content-only; (2) isKnownAgent() must return true iff agentDir exists on disk or name === MAIN_AGENT_ID; (3) isTrustedPeer is symmetric (if A trusts B, B trusts A); (4) Team cleanup on deletion must be reflexive (if A.reportsTo = deleted, A.reportsTo = MAIN_AGENT_ID); (5) Message routing abandons only after target session absent >1h, not when busy; (6) Profile resolve happens at process launch, not at create time (so profile changes apply on restart). Regression risks: (1) Changing isTrustedPeer logic breaks inter-agent messaging wrapping and may leak secrets (trusted wraps vs untrusted XML tags); (2) Removing HIDDEN_AGENT_SENTINEL support exposes technical workers on dashboard, duplicating message delivery; (3) Modifying agent_messages status enum breaks router logic; (4) Altering agentDir path resolution (safeJoin) enables directory traversal; (5) Removing message abandonment window causes permanent queue bloat; (6) Changing isSessionReadyForPrompt behavior (pane-state.ts) may inject messages into corrupted panes; (7) Profile placeholders (${HOME}//${AGENT_DIR}) are security-critical for permission boundaries—typos leak access to sibling agents' dirs. Tests to check: agent-scaffold-tasks.test.ts (scheduled-task config rewrite), team-trust.ts (trust graph symmetry), message-router (abandon logic, session resolution).\n"
+    },
+    {
+      "subsystem": "Message Router and Trust Model",
+      "purpose": "Routes inter-agent messages with two-tier trust classification (trusted-peer vs untrusted) based on team hierarchy graph (reportsTo, delegatesTo, trustFrom). Enforces from_agent as untrusted input by default, scrubs security tags from all payloads, and ensures main agent is implicit peer of all sub-agents. Session isolation via per-agent tmux sessions and chat_id scoping in database ledgers.",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/team-trust.ts",
+          "role": "Trust graph decision logic — isTrustedPeer(from, to, ctx) checks symmetric edges in team hierarchy; main agent always trusted with all; from_agent id validated before trust check to prevent spoofing"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/prompt-safety.ts",
+          "role": "Wrapping and sanitization — wrapUntrusted/wrapTrustedPeer strip BOTH tag types from all payloads; sanitizeAgentIdent rejects non-[a-zA-Z0-9_-] to close channel-coordinator forgery window; UNTRUSTED_PREAMBLE vs TRUSTED_PEER_PREAMBLE signal to LLM"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/message-router.ts",
+          "role": "5s tick loop — pulls pending messages, checks session existence, sanitizes from_agent, classifies delivery (channel-inbound/trusted-peer/untrusted), wraps content, injects into target tmux session with prefix preamble"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-config.ts",
+          "role": "Agent registry — isKnownAgent(name) validates sender against disk agents + MAIN; agentDir ensures path-traversal protection via safeJoin; per-agent model/profile/claudeConfigDir isolation"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-team.ts",
+          "role": "Team graph persistence — reads/writes agent-config.json team fields (reportsTo, delegatesTo, trustFrom); sanitizeTeamConfig drops self-refs and unknown agent names; cleanupTeamReferences on agent deletion"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/messages.ts",
+          "role": "API endpoint /api/messages POST — creates agent_messages rows; critical 403 guard rejects channel-coordinator id forgery via sanitizeAgentIdent(from) === COORDINATOR_AGENT_ID check (mirrors router's exact normalization)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/db.ts",
+          "role": "Database schema — agent_messages table (from_agent, to_agent, content, status, created_at); conversation_log per (agent_id, chat_id, direction) for session-continuity replay; UNIQUE(agent_id, chat_id, direction, message_id)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/agent-process.ts",
+          "role": "Session management — agentSessionName(name) → 'agent-{name}', MAIN uses 'nexus-channels'; isSessionReadyForPrompt(session) double-sample confirmed idle check; sendPromptToSession(session, text) with 5s chunk-send + Enter-retry loop"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/channel-coordinator/ingest.ts",
+          "role": "In-process coordinator — inserts (COORDINATOR_AGENT_ID='telegram-coordinator', MAIN_AGENT_ID) into agent_messages; identity-matched on code constant, never self-asserted from request; /api/messages rejects it via 403"
+        }
+      ],
+      "keySymbols": [
+        "team-trust.ts:55 isTrustedPeer(from, to, ctx) — pure decision returning bool",
+        "team-trust.ts:23-32 TeamConfigForTrust interface — reportsTo, delegatesTo, trustFrom fields",
+        "prompt-safety.ts:64 wrapUntrusted(source, content) — scrubs both tag types, returns <untrusted> wrapper",
+        "prompt-safety.ts:73 wrapTrustedPeer(source, content) — scrubs both tag types, returns <trusted-peer> wrapper",
+        "prompt-safety.ts:52 sanitizeAgentIdent(raw) — whitelist [a-zA-Z0-9_-], returns empty string on no match",
+        "message-router.ts:74 startMessageRouter() — setInterval 5s loop calling getPendingMessages()",
+        "message-router.ts:68 shouldAbandon(sessionExists, ageMs, windowMs) — pure: !sessionExists && ageMs > windowMs",
+        "message-router.ts:120 sanitizeAgentIdent(msg.from_agent) and rejection if empty",
+        "message-router.ts:141 isTrustedPeer(msg.from_agent, msg.to_agent, ctx) with MAIN_AGENT_ID passed",
+        "message-router.ts:150-161 isChannelInbound → wrapChannelInbound | trusted → wrapTrustedPeer | else → wrapUntrusted",
+        "agent-config.ts:272 isKnownAgent(name) — MAIN_AGENT_ID always true, else fs.existsSync(agentDir)",
+        "agent-team.ts:33 readAgentTeam(name) — reads agent-config.json .team field, returns DEFAULT_TEAM on miss",
+        "agent-team.ts:67 sanitizeTeamConfig(agentName, team) — filters delegatesTo/trustFrom/reportsTo against known agents + warns",
+        "routes/messages.ts:38 sanitizeAgentIdent(from) === COORDINATOR_AGENT_ID check + 403 reject",
+        "routes/messages.ts:43 createAgentMessage(from.trim(), to.trim(), content.trim())",
+        "db.ts:331-342 agent_messages table: (id, from_agent, to_agent, content, status, created_at, ...)",
+        "db.ts:207-219 conversation_log table: (agent_id, chat_id, direction, message_id, text) with UNIQUE(agent_id, chat_id, direction, message_id)",
+        "agent-process.ts:31 agentSessionName(name) → 'agent-{name}'",
+        "agent-process.ts:522 isSessionReadyForPrompt(session) — double-sample idle confirmation",
+        "agent-process.ts:407 sendPromptToSession(session, text) — chunk-send + post-send Enter-retry",
+        "ingest.ts:23 COORDINATOR_AGENT_ID = 'telegram-coordinator'",
+        "ingest.ts:160 createHandoffMessage(content) — INSERT from COORDINATOR_AGENT_ID to MAIN_AGENT_ID"
+      ],
+      "howItWorks": "The message router polls agent_messages table every 5 seconds. For each pending message: (1) Sanitize from_agent via sanitizeAgentIdent—if empty after sanitization, reject with 'invalid from_agent'. (2) Check target session exists in tmux; if absent >1h, mark failed; if present but busy, retry. (3) Classify delivery via isTrustedPeer(from_agent, to_agent, ctx) where ctx.mainAgentId=MAIN_AGENT_ID, ctx.isKnownAgent checks disk + MAIN, ctx.readAgentTeam fetches team config. Trust rules: (a) self-loop → false, (b) unknown sender/target → false (prevents spoofing), (c) MAIN involved → true (main is implicit peer), (d) symmetric edges in reportsTo/delegatesTo/trustFrom → true, else false. (4) Based on trust: channel-inbound (identity COORDINATOR_AGENT_ID only) → wrapChannelInbound (verbatim), trusted peer → wrapTrustedPeer + TRUSTED_PEER_PREAMBLE, untrusted → wrapUntrusted + UNTRUSTED_PREAMBLE. Wrapping scrubs BOTH tag types from payload to prevent nested injection. (5) Send to session via sendPromptToSession(session, prefix + wrapped): chunk-send in 80-char bursts, Enter keystroke, post-send Enter-retry loop. Session isolation: each agent runs in 'agent-{name}' tmux session; per-agent Claude Code project via encoded directory name (~/.claude/projects/{path-with-/-as-dash}); per-agent team config in agents/{name}/agent-config.json; conversation ledger scoped by (agent_id, chat_id) for native channel replay.",
+      "citadelImpact": "CITADEL must preserve: (1) from_agent treated as untrusted input, validated before trust check via sanitizeAgentIdent (rejects non-[a-zA-Z0-9_-]); (2) symmetric trust graph with main-agent as implicit peer, reportsTo/delegatesTo/trustFrom edges; (3) two-tier wrapping (wrapUntrusted vs wrapTrustedPeer) with tag scrubbing of BOTH types on every payload—non-negotiable defense against nested injection; (4) channel-coordinator identity-matched on code constant (COORDINATOR_AGENT_ID), never on self-asserted request field, with 403 guard at API endpoint matching router's sanitizeAgentIdent normalization; (5) per-agent session isolation (agentSessionName, team config, project dir, conversation_log scoped by agent_id + chat_id). Spawn privilege-gate must hook AFTER trust classification in message-router.ts (lines 141-146) so a compromised sub-agent cannot escalate by forging from_agent to claim trusted-peer status. Files to migrate: /home/uplinkfather/CITADEL/citadel/src/team-trust.ts, /home/uplinkfather/CITADEL/citadel/src/prompt-safety.ts, /home/uplinkfather/CITADEL/citadel/src/web/message-router.ts (modify classification + hook spawn-gate), /home/uplinkfather/CITADEL/citadel/src/web/routes/messages.ts (403 guard), agent-team.ts, agent-config.ts, db.ts (conversation_log + agent_messages schema).",
+      "invariantsRisks": "INVARIANTS: (1) isTrustedPeer(from, to) MUST return false for unknown sender/target BEFORE checking main shortcut—reordering this check is a bypass (test coverage: team-trust.test.ts lines 45-51). (2) Both wrapUntrusted and wrapTrustedPeer MUST strip BOTH tag types (untrusted and trusted-peer) from payload—not scrubbing the opposite tag inside an outer wrapper re-enables nested injection (test: prompt-safety.test.ts lines 51-56, 90-95). (3) sanitizeAgentIdent(from) in message-router.ts MUST exactly match the one used in routes/messages.ts 403 check—asymmetry allows forged coordinator id to pass POST but sneak through router (test: routes/messages.ts lines 30-37). (4) Session existence check MUST precede age check in shouldAbandon—old code abandoned at 1h regardless of running session, losing reports (test: router-abandon.test.ts lines 25-27). (5) Agent configuration isolation (team per agent-config.json, conversation_log per agent_id) must be enforced at read time—no cross-agent config leakage. (6) COORDINATOR_AGENT_ID insert MUST be in-process DB only, never via /api/messages POST. RISKS: (1) Privilege escalation if spawn-gate checks happen BEFORE trust classification—a malicious sub-agent crafting a message with spoofed from_agent='main' reaches the gate as trusted, bypassing privilege check. (2) Regression if tag-scrubbing regex changes—must test nested attack patterns in test suite. (3) Config migration: team field is optional (older agents lack trustFrom array)—code must handle null/undefined via ?? operator (agent-team.ts:43-44, team-trust.ts:72-73)."
+    },
+    {
+      "subsystem": "Memory layer and resilience plumbing",
+      "purpose": "CITADEL's durable state layer (memories, conversation continuity, scheduled tasks, kanban) and multi-layered watchdog cascade that keeps the always-on channels session alive, recovers from plugin crashes, detects stuck operations, heals auth failures, and coordinates with the standalone backfill poller. Spans hot/warm/cold memory tiers with semantic/episodic categorization, FTS5 search with embeddings, plus five independent resilience watchers (channel health, stuck tool calls, auto-restart, reauth, channel-monitor recovery cascade).",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/memory.ts",
+          "role": "User preference/episodic memory builder: semantic pattern detection, daily digest generation via sub-agent, memory decay, Kanban integration"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/db.ts",
+          "role": "Core durable store: SQLite schema definitions (memories, conversation_log, pending_task_retries, kanban_cards, background_tasks, token_usage), FTS5 full-text search with triggers, hot/warm/cold/shared tier enforcement, embedding column for vector search (Ollama), migration/upgrade logic"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/pending-retries.ts",
+          "role": "Pure logic for persistent scheduled-task retry queue: shouldSendAlert decision, Telegram send error classification (transient/permanent), deduplicated alerting policy with at-least-once delivery guarantees"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/auto-restart.ts",
+          "role": "Pure logic for per-agent auto-restart scheduling: parseHHMM time parsing, daily/interval-based restart due-decision, config normalization"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/process-lock.ts",
+          "role": "Port/pidfile acquisition logic: exclusive O_EXCL lockfile claim, SIGTERM/SIGKILL process termination cascade with grace periods, legitimate predecessor detection, race-safe concurrent startup serialization"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-poller-reap.ts",
+          "role": "Orphan process cleanup: reap bun/node channel pollers by bot.pid + env-var scan, reap detached main-session claude processes via pane-attribution tree-walk to prevent 409 Conflict loops on shared bot token"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-health-monitor.ts",
+          "role": "Plugin failure detection: scan pane output for ✘failed/error/disconnected, exponential backoff reconnect with MAX_RETRIES=3, auto-recovery via attemptChannelMcpReconnect"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/stuck-tool-call-watcher.ts",
+          "role": "TUI freeze detection: track tool-call progress line, stagnation detection (frozen counter across 2 polls >= 180s threshold), CPU-profile guard against false positives (idle wedge must have CPU <= 30%), respawn via resumeNexusSession with grace window, post-respawn deferred execution"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/auto-restart-runner.ts",
+          "role": "Per-agent auto-restart scheduler: poll daily time or interval, idle-guard prevents mid-turn restarts, seed-on-first-sight prevents spurious boot-time restarts, mode selection (fresh/continue)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/reauth-healer.ts",
+          "role": "OAuth dead-token detection and recovery: autonomous /login send-keys for sub-agents, escalate-only for main session, at-threshold + cooldown dedupe (9 min probe count before escalation, 30 min between re-alerts)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-monitor.ts",
+          "role": "Main recovery cascade (4 stages: soft MCP reconnect, save context, resume --continue, hard fresh restart), keepalive staleness detector with inbound refresh, liveness shortcut (bun plugin alive = channel healthy), session vanishing recovery via channels.sh, cross-layer grace coordination"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/pane-state.ts",
+          "role": "TUI state detector: idle/busy/typing/unknown/error classification, busy-indicator regex (tokens counter, spinner labels), thinking-block API error detection (400 cannot be modified), stuck-input signature detection (pasted placeholder, verbatim payload hint), stuck-tool-call progress parsing"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/heartbeat.ts",
+          "role": "Hourly summation sub-agent: isolated CLAUDE_CONFIG_DIR symlink with plugin-disable override, macOS Keychain credential materialization, .claude.json MCP server config duplication, data collection (calendar, kanban, system metrics), notification filter (time-of-day, weekend, urgency), daily digest via runAgent"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/channel-coordinator.ts",
+          "role": "Standalone backfill poller: launchd-managed Telegram inbound safety-net, enters backfill only when native poller down (debounce >= 2 probes), seeds from high-water to prevent double-delivery, yields immediately if native recovers, 409-cooldown suppression (90s) against flapping, single-instance pidfile lock"
+        }
+      ],
+      "keySymbols": [
+        "memory.ts:buildMemoryContext (line 77)",
+        "memory.ts:saveConversationTurn (line 134)",
+        "memory.ts:runDailyDigest (line 160)",
+        "memory.ts:runDecaySweep (line 153)",
+        "db.ts:initDatabase (line 37)",
+        "db.ts:tightenDbPermissions (line 22)",
+        "db.ts:saveMemory (line 569)",
+        "db.ts:searchMemories (line 604)",
+        "db.ts:saveAgentMemory (line 648)",
+        "db.ts:getMemoriesForChat (line 642)",
+        "db.ts:generateEmbedding (async, line 662)",
+        "db.ts:Memory interface (line 553)",
+        "db.ts:conversation_log table schema (line 208)",
+        "db.ts:memories_fts FTS5 table (line 97)",
+        "db.ts:pending_task_retries table (line 387)",
+        "db.ts:insertPendingTaskRetryIfNew (line 1302)",
+        "db.ts:updatePendingTaskRetry (line 1321)",
+        "pending-retries.ts:shouldSendAlert (line 44)",
+        "pending-retries.ts:classifyTelegramSendError (line 74)",
+        "pending-retries.ts:toPendingRetryView (line 106)",
+        "auto-restart.ts:restartDue (line 89)",
+        "auto-restart.ts:dailyDueAtMs (line 102)",
+        "auto-restart.ts:parseHHMM (line 41)",
+        "auto-restart.ts:normalizeAutoRestartConfig (line 57)",
+        "process-lock.ts:acquirePortLock (line 169)",
+        "process-lock.ts:acquirePidfileLock (line 289)",
+        "process-lock.ts:ProcessLockContext interface (line 26)",
+        "channel-poller-reap.ts:reapChannelOrphans (line 97)",
+        "channel-poller-reap.ts:reapDetachedChannelClaudes (line 263)",
+        "channel-poller-reap.ts:findOrphanChannelClaudes (line 177)",
+        "channel-poller-reap.ts:parsePollerPidsFromPs (line 47)",
+        "channel-health-monitor.ts:startChannelHealthMonitor (line 108)",
+        "channel-health-monitor.ts:checkAgent (line 56)",
+        "stuck-tool-call-watcher.ts:startStuckToolCallWatcher (line 209)",
+        "stuck-tool-call-watcher.ts:checkSession (line 135)",
+        "stuck-tool-call-watcher.ts:confirmsWedgeProfile (line 66)",
+        "stuck-tool-call-watcher.ts:shouldDeferForRecentRespawn (line 127)",
+        "auto-restart-runner.ts:startAutoRestartRunner (line 113)",
+        "auto-restart-runner.ts:checkAgent (line 77)",
+        "reauth-healer.ts:startReauthHealer (line 151)",
+        "reauth-healer.ts:decideReauthAction (line 72)",
+        "reauth-healer.ts:checkSession (line 124)",
+        "channel-monitor.ts:resumeNexusSession (line 208)",
+        "channel-monitor.ts:hardRestartNexusChannels (line 440)",
+        "channel-monitor.ts:createMainChannelsSession (line 375)",
+        "channel-monitor.ts:shouldDeferKeepaliveRespawn (line 498)",
+        "channel-monitor.ts:shouldRespawnForStaleKeepalive (line 508)",
+        "channel-monitor.ts:shouldRefreshKeepaliveFromInbound (line 538)",
+        "channel-monitor.ts:buildMainSessionRespawnCmd (line 183)",
+        "channel-monitor.ts:lastMainRespawnAt (line 317)",
+        "channel-monitor.ts:NEXUS_POST_RESPAWN_GRACE_MS (line 308)",
+        "pane-state.ts:detectPaneState (line 226)",
+        "pane-state.ts:isReadyForPrompt (line 282)",
+        "pane-state.ts:shouldRetrySubmit (line 378)",
+        "pane-state.ts:detectsThinkingBlockError (line 178)",
+        "pane-state.ts:stuckInputSignature (line 378 region)",
+        "pane-state.ts:stuckToolCallSignature (region)",
+        "heartbeat.ts:executeHeartbeat (line 469)",
+        "heartbeat.ts:ensureHeartbeatWorkerCwd (line 78)",
+        "heartbeat.ts:readClaudeCodeOauthJson (line 266)",
+        "heartbeat.ts:collectData (line 340)",
+        "heartbeat.ts:buildAgentPrompt (line 381)",
+        "heartbeat.ts:HEARTBEAT_AGENT_CWD (line 33)",
+        "heartbeat.ts:HEARTBEAT_CONFIG_DIR (line 49)",
+        "channel-coordinator.ts:inNative409Cooldown (line 109)",
+        "channel-coordinator.ts:readToken (line 117)",
+        "channel-coordinator.ts:acquireSingleInstanceLock (line 142)"
+      ],
+      "howItWorks": "The memory layer consists of two components: durable storage and live retrieval. Memory.ts manages semantic/episodic categorization, extracting user preferences and facts from conversations via regex patterns (SEMANTIC_PATTERN), writing them to db.ts, and synthesizing daily digests via a sub-agent running in isolated CLAUDE_CONFIG_DIR (to prevent plugin collision). Db.ts backs a better-sqlite3 database with FTS5 full-text search (memories_fts virtual table with INSERT/UPDATE/DELETE triggers), hot/warm/cold/shared tiering with CHECK constraints, and an embedding column for future vector search (fire-and-forget Ollama async generation). The conversation_log table (UNIQUE on agent_id + chat_id + direction + message_id) provides a rolling transcript for respawn recovery. Salience decay happens via decayMemories (0.5% daily, never delete, min 0.01).\n\nResilience is layered defensively across five independent watchdogs orchestrated by src/web.ts. (1) Channel-health-monitor (60s cadence, 45s offset) scans pane output for ✘failed/disconnected, exponential backoff reconnects (30s × 3^attempt), resets on recovery. (2) Stuck-tool-call-watcher (30s cadence, 35s offset) parses \"Worked for Ns\" progress, detects stagnation (same counter across 2 consecutive polls, Ns >= 180s), guards against false positives with CPU% sampling (must be <= 30% idle wedge), defers recovery if respawn happened within 360s grace, then calls resumeNexusSession (reap orphans, tmux respawn-pane --continue, dismiss resume modal, schedule identity/unlock probes). (3) Auto-restart-runner (60s, 40s delay) schedules per-agent restarts via daily HH:MM or interval-hours, seeds lastRestart on first sight to prevent boot-fire, defers if pane busy (idle-guard). (4) Reauth-healer (3 min cadence, 90s delay) detects dead OAuth tokens (401 responses), sends /login keys only to sub-agents (never main), escalates after 3 consecutive probes (~9 min) with 30 min cooldown. (5) Channel-monitor (60s, 30s initial) runs a 4-stage cascade for main session: (stage 1) soft MCP reconnect, (stage 2) send memory-save prompt, (stage 3) 240s window for resumeNexusSession --continue to settle large-context load + plugin re-handshake, (stage 4) hard fresh restart via respawnNexusSessionFresh or launchctl. Keepalive staleness (18 min threshold) auto-refreshes from last inbound traffic mtime to prevent false-positives during active conversations, but if bun plugin is alive (probed via process tree), respawn is skipped. Session vanishing is detected and recreated via channels.sh.\n\nPane-state.ts provides the state machine: detectPaneState classifies as idle/busy/typing/unknown/error by checking for IDLE_FOOTER_RX (bypass permissions line), BUSY_INDICATORS (tokens counter \\(\\d+s · ↓, spinner labels with tail requirement to avoid prose false positives), esc-to-interrupt scoped to footer region only (to prevent scrollback quoting from pinning as busy), thinking-block errors (400 cannot be modified signature within chrome block + live tail), and parked input (❯ [ \\t]+ \\S in input box, scanned upward from footer). Stuck-input signature detects pasted placeholders and verbatim payloads (minHintChars default 16). Stuck-tool-call signature parses the \"<verb> for Ns\" line and returns tag/seconds/firstSeenAt for the watcher's stagnation logic. Process-lock.ts handles port reclamation (find + SIGTERM/SIGKILL cascade with grace) and pidfile O_EXCL locking (unlink stale/self-recorded, SIGTERM peers, bounded retry). Channel-poller-reap.ts combines bot.pid + ps eww -e env-var scan to find orphan bun/node processes (bot.pid alone misses reparented orphans), and uses pane-attribution tree-walk (ancestor pid chain to live tmux pane) to find detached main-session claudes without *_STATE_DIR export. Heartbeat.ts isolates its sub-agent: symlinks ~/.claude/* except settings.json (plugin disable override), materializes macOS Keychain credentials to .credentials.json, duplicates project MCP config. Channel-coordinator.ts runs launchd-managed as a backfill safety-net: stays idle while native poller alive (probed via getClaudePidForSession + hasChannelPluginAlive), enters backfill after DOWN_DEBOUNCE (2 probes), seeds from probeHighWater (no double-delivery), exits on 409 (native confirmed up, 90s cooldown against transient flaps), or on native recovery detection.",
+      "citadelImpact": "CITADEL must preserve: (1) Dual memory tiers (semantic/episodic automatic capture + hot/warm/cold/shared durable classification, FTS5 search, embedding async generation pipeline). (2) All five watchdogs active and coordinated (shared grace timestamps, cross-layer respawn coordination via RESPAWN_STAMP_FILE). (3) Conversation continuity ledger (conversation_log ROLLING_TRANSCRIPT, SessionStart replay on respawn). (4) Scheduled-task resilience (pending_task_retries persistent queue, shouldSendAlert at-least-once delivery with alert_sent_at stamping). (5) Process lock and orphan reap on startup (acquirePortLock, acquirePidfileLock, reapChannelOrphans, reapDetachedChannelClaudes in agent startup). (6) Pane-state detection (all five classify rules: idle footer, busy indicators, thinking error, stuck input, stuck tool-call). (7) Recovery cascade 4-stage topology (soft → save → resume --continue → hard fresh). Files: db.ts schema untouched; memory.ts daily-digest sub-agent isolation rules; pending-retries.ts decision logic; auto-restart.ts due-date logic; process-lock.ts locking protocol; channel-poller-reap.ts orphan enumeration; channel-health-monitor.ts reconnect cadence; stuck-tool-call-watcher.ts stagnation thresholds + CPU guard + grace deference; auto-restart-runner.ts idle-guard + seed-on-sight; reauth-healer.ts threshold (3 probes) + cooldown (30 min); channel-monitor.ts 4-stage cascade, RESUME_GRACE_MS (240s), NEXUS_POST_RESPAWN_GRACE_MS (360s), keepalive refresh logic; pane-state.ts all regex + error block logic; heartbeat.ts isolation (HEARTBEAT_CONFIG_DIR symlink + plugin disable); channel-coordinator.ts liveness probe call signature, 409-cooldown (90s), DOWN_DEBOUNCE (2).",
+      "invariantsRisks": "INVARIANTS (must not break): (1) At most one dashboard process holds the exclusive port/pidfile lock; concurrent startup must serialize (acquirePidfileLock O_EXCL atomic, SIGTERM → SIGKILL cascade on collision). (2) Conversation_log UNIQUE(agent_id, chat_id, direction, message_id) enforces idempotency; SessionStart replay on respawn is deterministic. (3) Pending_task_retries rows are never abandoned; every row persists until task succeeds or operator cancels (no TTL, no silent drop across restarts). (4) Keepalive file mtime only ever advances (never rewinds), so age comparisons are monotonic; inbound refresh checks lastInboundTs > mtimeMs before advancing. (5) Post-respawn grace (360s NEXUS_POST_RESPAWN_GRACE_MS) is shared across all respawn paths (stuck-tool-call watcher, inbound-probe, channel-monitor cascade, systemd-timer via RESPAWN_STAMP_FILE) so double-respawn within 360s is impossible. (6) Stagnation detection requires BOTH conditions: seconds >= freezeSeconds AND counter unchanged across stagnantPolls (default 2); a real slow tool-call increments every second, so it cannot fail both. (7) Reap operations are idempotent: killing an already-dead pid is caught, process.kill(pid, 0) is the liveness probe. (8) Orph orphan detection is conservative: pane-attribution reaps only if not attached to a LIVE pane (fail-safe: zero live panes = refuse to reap). (9) Embeddings are async fire-and-forget (generateEmbedding does not block saveAgentMemory); a crash mid-embedding leaves embedding NULL (valid, search falls back to FTS5 keyword). REGRESSION RISKS: (A) Removing any watchdog introduces a new failure mode (no channel-health = no reconnect on transient plugin drops; no stuck-tool-call = TUI freezes starve forever; no auto-restart = context bloat on long sessions; no reauth = dead OAuth silently stops working; no channel-monitor = vanished session loses all scheduled tasks). (B) Shortening NEXUS_POST_RESPAWN_GRACE_MS below realistic cold-start (360s is already aggressive) causes double-respawn churn during boot. (C) Weakening CPU guard in stuck-tool-call watcher (raising maxCpuPercent from 30%) could respawn sessions doing legitimate heavy work. (D) Removing pane-attribution check in reapDetachedChannelClaudes could SIGKILL the live active session. (E) Lowering RESUME_GRACE_MS (240s) causes stage 3 --continue timeout into stage 4 hard restart during large-context load. (F) Removing conversation_log or weakening UNIQUE index loses SessionStart determinism. (G) Removing pane-state.ts scoping (whole-pane vs footer-region for esc-to-interrupt) causes scrollback quoting to pin sessions as busy forever."
+    },
+    {
+      "subsystem": "CITADEL Build, Config, Scheduling, and Tests Architecture",
+      "purpose": "CITADEL is a Claude Code agent orchestration framework that manages multi-agent teams running on Telegram/Slack channels. It provides memory tiers, kanban task management, heartbeat monitoring, scheduled-task execution, and a web dashboard (localhost:3420). The system stores all state in SQLite (citadel.db), coordinates agents via tmux sessions, and runs as a daemon (launchd on macOS, systemd on Linux).",
+      "keyFiles": [
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/package.json",
+          "role": "Project manifest; defines name as 'citadel', scripts (build, start, dev, setup, schedule, test, typecheck), dependencies (@anthropic-ai/claude-agent-sdk, better-sqlite3, cron-parser, pino)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/tsconfig.json",
+          "role": "TypeScript compilation config: targets ES2022, moduleResolution NodeNext, strict mode, outDir dist, rootDir src"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/config.ts",
+          "role": "Central config module; exports PROJECT_ROOT, STORE_DIR, DB_FILENAME='citadel.db', PID_FILENAME='citadel.pid', env vars (TELEGRAM_BOT_TOKEN, SLACK_*, OWNER_NAME, BOT_NAME, MAIN_AGENT_ID fallback 'nexus', WEB_PORT, HEARTBEAT_*)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/env.ts",
+          "role": "Env file parser; readEnvFile() reads .env, handles quotes and comments"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/.env.example",
+          "role": "Example config with TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_ID, OWNER_NAME, optional WEB_PORT, WEB_HOST, OLLAMA_URL, CITADEL_ENV"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/install.sh",
+          "role": "macOS/Linux OS-detect wrapper; delegates to install-macos.sh or install-linux.sh"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/install-linux.sh",
+          "role": "Interactive Linux installer; prompts for BOT_NAME (default 'CITADEL'), OWNER_NAME, TELEGRAM_BOT_TOKEN; displays ASCII banner; sets up systemd service 'citadel.service' in ~/.config/systemd/user; references claude fallback for diagnosis"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/install-macos.sh",
+          "role": "Interactive macOS installer; prompts for BOT_NAME; creates launchd plist 'com.citadel.app' in ~/Library/LaunchAgents; references claude fallback for diagnosis"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/scripts/setup.ts",
+          "role": "Setup CLI (tsx scripts/setup.ts); creates .env, plist/service, database. Hardcodes plistName='com.citadel.app', servicePath='citadel.service', welcome 'Udvozol a CITADEL telepito!'"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/db.ts",
+          "role": "SQLite database module (67KB); initializes citadel.db, manages schema (sessions, memories, kanban_cards, token_usage, channel_requests, inter_agent_messages, auto_restart); exports getDb(), query helpers"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/index.ts",
+          "role": "Main daemon entry point; starts web server (port 3420), process locks, agent monitoring, invite monitor, request watcher, channel plugin monitor, heartbeat, schedule runner, auto-restart runner; displays ASCII CITADEL banner (mixed with old references); handles graceful shutdown (SHUTDOWN_HARD_KILL_MS=5000)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/schedule-runner.ts",
+          "role": "Scheduled-task execution engine; reads task-config.json from scheduled-tasks/*, parses cron, spawns agents on schedule, handles heartbeat prefix ('heartbeat' task type)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/nexus.ts",
+          "role": "Main agent API (GET /api/nexus, PUT /api/nexus, POST /api/nexus/avatar); reads BOT_NAME, MAIN_AGENT_ID, OWNER_NAME from config; responds with agent profile, avatar"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/routes/token-usage.ts",
+          "role": "Token analytics dashboard (GET /api/token-usage/*); parses .jsonl transcript logs from ~/.claude/projects, inserts into token_usage table, correlates with kanban cards (CITADEL spec: REMOVE this for rebuild)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/llm-breakdown.ts",
+          "role": "Kanban card breakdown tool; calls 'claude -p --model claude-sonnet-4-6' to suggest subtasks (CITADEL spec: REMOVE this, --model -p flag no longer exists)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-invites.ts",
+          "role": "Channel invite tokens for one-click pairing (telegram/slack); manages invites.json sidecar, auto-approval monitor (CITADEL spec: REMOVE for single-user rebuild)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/discord-group-bootstrap.ts",
+          "role": "Discord channel-group initialization; ensures DISCORD_CHANNEL_ID auto-added to access.json groups (CITADEL spec: REMOVE for single-user rebuild)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/web/channel-request-watcher.ts",
+          "role": "Slack audit-log scanner for pending channel requests; monitors audit.jsonl, populates DB (CITADEL spec: REMOVE for single-user rebuild)"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/scheduled-tasks/",
+          "role": "Directory of task-config.json files; tasks have schedule (cron), agent, enabled, type ('heartbeat'), skipIfBusy, createdAt; examples: memoria-heartbeat (*/15), dream-engine, reggeli-napindito"
+        },
+        {
+          "path": "/home/uplinkfather/CITADEL/citadel/src/__tests__/",
+          "role": "60 test files, ~10,367 lines total; cover env parsing, db, config, heartbeat, channel coordination, kanban, token usage, agent process, auto-restart, scheduled tasks, memory decay, etc."
+        }
+      ],
+      "keySymbols": [
+        "src/config.ts: PROJECT_ROOT, STORE_DIR, DB_FILENAME='citadel.db', PID_FILENAME, MAIN_AGENT_ID fallback 'nexus', BOT_NAME, OWNER_NAME, RESPAWN_ENABLED, HEARTBEAT_AGENT_ENABLED",
+        "src/env.ts: readEnvFile(keys?: string[]): Record&lt;string, string&gt;",
+        "src/db.ts: initDatabase(), getDb(), getSession(), setSession(), saveMemory(), recentMemories(), getKanbanCard(), insertKanbanCard(), token_usage (table), channel_requests (table), inter_agent_messages (table), updateChannelRequestName()",
+        "src/index.ts: startWebServer(), process locks (acquirePortLock, acquirePidfileLock), startInviteMonitor(), startChannelRequestWatcher(), startChannelPluginMonitor(), startScheduleRunner(), startAutoRestartRunner(), DASHBOARD_BINARY_PATTERN regex",
+        "src/web.ts: startWebServer(port), authentication (DASHBOARD_TOKEN), CORS, route dispatch (tryHandle* functions), startMessageRouter(), startUpdateChecker(), startScheduleRunner(), startChannelPluginMonitor(), startInboundProber(), startChannelHealthMonitor()",
+        "src/web/schedule-runner.ts: scheduleRunner(), readScheduledTasks(), parseTaskConfig(), cronSchedule, executeScheduledTask()",
+        "src/web/routes/nexus.ts: tryHandleNexus(), GET /api/nexus (agent info), PUT /api/nexus (description), POST /api/nexus/avatar (avatar), readAutoRestartConfig(MAIN_AGENT_ID)",
+        "src/web/routes/token-usage.ts: collectTokenUsage(), parseJsonlFile(), getTokenSummary(), getTokenTimeline(), getTokenDetails(), correlateWithKanban()",
+        "src/web/llm-breakdown.ts: generateBreakdown(), callClaudeP() [executes 'claude -p'], validateSubtasks(), getValidAssignees() returns Set(['operator', 'NEXUS', ...agents])",
+        "src/web/channel-invites.ts: createInvite(), listInvites(), revokeInvite(), startInviteMonitor(), runInviteMonitorTick(mainAgentId, agentsRoot)",
+        "src/web/discord-group-bootstrap.ts: ensureDiscordChannelGroup() [idempotent, adds CHANNEL_CHAT_ID to access.json groups]",
+        "src/web/channel-request-watcher.ts: startChannelRequestWatcher(), runScanTick(), scanAuditLog(), lookupChannelName() [Slack API call], updateChannelRequestName()",
+        "scripts/setup.ts: setupWizard(), plistName='com.citadel.app', serviceName='citadel.service', createEnvFile(), createLaunchAgent() [macOS], createSystemdService() [Linux]",
+        "package.json scripts: build (tsc), start (node dist/index.js), dev (tsx src/index.ts), setup (tsx scripts/setup.ts), schedule (tsx src/schedule-cli.ts), test (vitest run), typecheck (tsc --noEmit)",
+        "test suite files (60): env.test.ts, db.test.ts, token-usage.test.ts, kanban-breakdown.test.ts, agent-conversation.test.ts, heartbeat-agent-scaffold.test.ts, schedule-runner-heartbeat-prefix.test.ts, channel-invites (no separate test, flows in index.ts integration tests)"
+      ],
+      "howItWorks": "\n**Build & Config Flow:**\nThe project is a pure TypeScript/Node.js codebase compiled to ES2022 (dist/) via tsc. At startup, src/index.ts reads config from .env via src/env.ts (keys: TELEGRAM_BOT_TOKEN, BOT_NAME defaults to 'CITADEL', MAIN_AGENT_ID defaults to 'nexus', OWNER_NAME). The database is initialized once (citadel.db in store/ dir), and the web server binds to localhost:3420 with bearer-token auth (DASHBOARD_TOKEN generated on first run). Installation scripts (install-linux.sh, install-macos.sh) are interactive, prompting for BOT_NAME and credentials, then register the daemon (systemd citadel.service on Linux, launchd com.citadel.app plist on macOS).\n\n**Scheduling & Scheduled Tasks:**\nThe schedule-runner.ts module reads cron-scheduled task definitions from scheduled-tasks/*.json (each with schedule, agent, enabled, type fields). Every cron tick, it spawns the target agent via agent-process.ts. The CLI tool src/schedule-cli.ts allows listing/editing schedules. Heartbeat tasks (type='heartbeat') are a special case: they spin up a dedicated \"heartbeat\" sub-agent hourly. Tasks can be skipped if the agent is busy (skipIfBusy: true).\n\n**Database & Memory Tiers:**\nSQLite (better-sqlite3) stores sessions (session_id per chat), episodic/semantic memories with decay weights, kanban cards (title, status, assignee, priority, description, archived_at), inter-agent messages, token usage (for analytics), and channel requests. Query functions in db.ts handle all CRUD; the memory.ts module runs daily decay sweeps. Key table: kanban_cards (tracks task dispatch via dispatched_at field).\n\n**Multi-Agent & Channels:**\nEach agent gets a tmux session (nexus-channels main session, agent-specific sessions for sub-agents). The channel-coordinator.ts monitors inbound messages from Telegram/Slack/Discord via Claude Code's channel plugin. Agents are spawned by agent-process.ts (via nodejs exec), get their own .env and session. Main agent (MAIN_AGENT_ID, e.g. 'nexus') runs as a daemon. Sub-agents are spawned on-demand or scheduled.\n\n**Web Routes & APIs:**\nThe web server (src/web.ts) routes requests to handler functions (tryHandle*). Key routes: /api/nexus (agent info, uses BOT_NAME + OWNER_NAME), /api/agents (list/create agents), /api/kanban (list/create/move cards), /api/token-usage (analytics from transcript logs—REMOVE in rebuild), /api/schedules (read scheduled tasks). All routes require bearer-token auth via checkBearerToken().\n\n**Community Features (to REMOVE):**\n- channel-invites.ts: one-click pairing tokens for Telegram/Slack (only relevant for multi-user setups)\n- discord-group-bootstrap.ts: auto-adds Discord channels to access policy (irrelevant for single-operator)\n- channel-request-watcher.ts: polls Slack audit logs to detect bot mentions in unapproved channels and suggest access grants (REMOVE)\n- llm-breakdown.ts: calls 'claude -p' (the --model flag is no longer valid; functionality should move to agent skill)\n- token-usage.ts: transcript analytics endpoint (LLM token breakdowns—REMOVE per spec)\n",
+      "citadelImpact": "\n**Branding (CITADEL identifiers):**\n- package.json: line 2 set name to 'citadel'\n- src/config.ts: line 24 set BOT_NAME default to 'CITADEL'; line 30 set MAIN_AGENT_ID default to 'nexus' (affects all tmux sessions, plist labels, pids, API routing)\n- src/index.ts: line 33–46 BANNER variable—set ASCII art text and branding to CITADEL\n- install-linux.sh, install-macos.sh: BOT_NAME prompts, ASCII banner, error messages, path references use 'CITADEL'\n- scripts/setup.ts: plistName 'com.citadel.app'; serviceName 'citadel.service'; welcome string 'CITADEL'\n- src/config.ts: DB_FILENAME 'citadel.db' (line 11); PID_FILENAME 'citadel.pid' (line 12)\n- src/db.ts: all occurrences of the DB filename reflect the DB_FILENAME constant ('citadel.db')\n- src/web/routes/nexus.ts: main-agent route file named nexus.ts, endpoint /api/nexus, route handler tryHandleNexus\n- src/web.ts: import statement line 37; route dispatch (routes/nexus.js); handler function call wired to tryHandleNexus\n- .env.example: line 1 comment 'CITADEL'; line 10 env var CITADEL_ENV\n- web/index.html: &lt;title&gt;CITADEL&lt;/title&gt;\n- All README.md, ATTRIBUTIONS.md, seed docs: use CITADEL brand references (not code, but affects user-facing docs)\n- CLI banner in install scripts: CITADEL logo\n\n**File Removals (Community/Analytics Features):**\n- src/web/llm-breakdown.ts (DELETE entirely)\n- src/web/token-usage.ts (DELETE entirely—move token analytics to agent skill if needed)\n- src/web/channel-invites.ts (DELETE entirely—single-user, no multi-user pairing)\n- src/web/discord-group-bootstrap.ts (DELETE entirely—single-user, no group bootstrap)\n- src/web/channel-request-watcher.ts (DELETE entirely—single-user, no request approval workflow)\n- src/web/routes/token-usage.ts (DELETE entirely)\n- src/__tests__/token-usage.test.ts (DELETE—removes analytics tests)\n- src/__tests__/kanban-breakdown.test.ts (DELETE—specific to LLM breakdown feature)\n\n**Code Removals:**\n- src/index.ts: remove startInviteMonitor() call (line 20, import + function calls in bootstrap)\n- src/index.ts: remove startChannelRequestWatcher() call (line 22, import + function calls)\n- src/index.ts: remove ensureDiscordChannelGroup() call (line 21)\n- src/web.ts: remove tryHandleTokenUsage import (line 44) and route dispatch call (~line 170)\n- src/web/routes/kanban.ts: remove generateBreakdown() import and POST /api/kanban/:id/breakdown endpoint (~line 150–170)\n- src/web/routes/agents.ts: remove channel-invites imports if present, remove POST /api/agents/:name/channels/:provider/invites endpoint\n- src/db.ts: optionally remove token_usage table schema and related queries (token_usage_cursors, insertCall, getTokenSummary, etc.)—or keep as no-op for forward-compat\n\n**Config/Identity Collisions (none expected):**\n- session/ledger/identity naming in src/db.ts is schema-specific (table names, not variable names), so CITADEL rebranding does not conflict. The conversation_ledger schema mentions agent identity but does not use \"citadel\" as a literal string.\n- MAIN_AGENT_ID set to 'nexus' is safe—it's a derived canonical ID (NFKD + ASCII + lowercase dashes), not used as a foreign-key collision source.\n\n**Actual Files Involved (all paths absolute to /home/uplinkfather/CITADEL/citadel/):**\n1. package.json\n2. tsconfig.json (no changes, but confirms ES2022 target)\n3. src/config.ts\n4. src/env.ts (no changes if DEFAULT value for .env is in config.ts)\n5. .env.example\n6. install.sh, install-linux.sh, install-macos.sh\n7. install-windows.ps1 (if exists, similar updates)\n8. scripts/setup.ts\n9. scripts/status.ts (check for brand references)\n10. src/index.ts\n11. src/db.ts\n12. src/web.ts\n13. src/web/routes/nexus.ts (main-agent route)\n14. src/web/routes/kanban.ts\n15. src/web/routes/agents.ts (check for invites endpoints)\n16. src/web/routes/ideas.ts (check for token-usage references)\n17. src/web/routes/overview.ts (check for dashboard summaries)\n18. src/web/schedule-runner.ts (check for BOT_NAME references)\n19. src/web.html (if separate, update title)\n20. web/index.html\n21. **DELETE:** src/web/llm-breakdown.ts, src/web/token-usage.ts, src/web/channel-invites.ts, src/web/discord-group-bootstrap.ts, src/web/channel-request-watcher.ts\n22. **DELETE:** src/web/routes/token-usage.ts\n23. **DELETE:** src/__tests__/token-usage.test.ts, src/__tests__/kanban-breakdown.test.ts\n24. All docs (README.md, REBUILD_PROMPT_V3.md, ATTRIBUTIONS.md, MIGRATION.md) for brand references (not code, informational only)\n",
+      "invariantsRisks": "\n**Critical Invariants (must not break):**\n\n1. **Database File Identifier:** The DB_FILENAME constant must remain consistent across all modules and matching the runtime storage path (STORE_DIR). Any typo in the rename ('citadel.db') will cause new installs to create a second database and lose state.\n\n2. **MAIN_AGENT_ID Derivation:** This must match the installer's NFKD + ASCII + lowercase conversion logic. If the user sets BOT_NAME='CITADEL Framework' → MAIN_AGENT_ID should be 'citadel-framework', not 'citadel'. The installer script regex must match the derive logic, or agents won't spawn in the right session.\n\n3. **PID File Locking:** The PID_FILENAME constant is used for daemon-singleton enforcement. Mismatch will allow multiple dashboard instances to fight over the port.\n\n4. **systemd/launchd Service Names:** The service/plist label MUST match the hardcoded name in setup.ts and installer scripts. If 'citadel.service' is registered but the code tries 'citadel-dashboard.service', systemctl enable will silently fail. The name also appears in KeepAlive/restart logic—mismatches break respawn.\n\n5. **Bearer Token Auth:** DASHBOARD_TOKEN is generated once and persisted. Rebranding must NOT change the token filename or location, or users will be locked out.\n\n6. **Channel Plugin Session Names:** The tmux session prefix 'nexus-channels' (or '{MAIN_AGENT_ID}-channels') must match across install scripts, channel-coordinator.ts, and channels.sh. Mismatches break plugin lifecycle management.\n\n7. **SQLite Schema:** token_usage, channel_requests, inter_agent_messages, and kanban_cards tables have foreign keys and internal references. Removing tables without migration will cause schema integrity errors on upgrade from old installations.\n\n8. **Relative Import Paths:** TypeScript imports use `.js` extension (ESM). Any file renames must update all import statements. The route handler files are dynamically imported by function names (tryHandle*), so renaming requires updating src/web.ts dispatcher logic.\n\n**Regression Risks:**\n\n1. **File Deletion Risk (llm-breakdown, token-usage):** Any installed user code that calls the deleted routes (/api/kanban/:id/breakdown, /api/token-usage/*) will 404. However, since these are new features (not in v1.0 baseline), risk is low if CITADEL is a hard fork, not an upgrade path. If upgrade path is required, add deprecation stubs that return 404 with helpful message.\n\n2. **Invite Monitor Startup:** Removing startInviteMonitor() from index.ts will cause existing multi-user installs (if any) to stop auto-approving channel pairings. If CITADEL is strictly single-user, this is safe. If any users had multi-user upstream installs and are upgrading, their pairing flow breaks. Mitigation: check for invites.json files in user's store/ dir on startup, log a warning if found (\"invite system disabled in CITADEL rebuild\").\n\n3. **Discord Group Bootstrap Removal:** If a user has CHANNEL_PROVIDER=discord and a DISCORD_CHANNEL_ID set, ensureDiscordChannelGroup() won't run, and the channel ID won't auto-populate access.json. The bot will refuse to reply in that channel until manually added. Mitigation: add a one-time migration check in index.ts that calls ensureDiscordChannelGroup() during boot even after removal, or move the logic to discord-group-bootstrap.ts as a conditional skip (if CITADEL_MODE=true, skip).\n\n4. **Token Usage Analytics Removal:** Any dashboard code that fetches /api/token-usage endpoints will fail silently (404s). If the frontend (web/app.js or dashboard HTML) has hardcoded links to token analytics, the UI will break. Mitigation: verify web/app.js does not reference /api/token-usage before deletion; add fallback UI message if it does.\n\n5. **Request Watcher Removal:** Slack audit.jsonl scanning stops. Users relying on the \"pending channel requests\" view will see empty lists. This is acceptable for single-user, but if any feature downstream depends on the channel_requests table being populated, that feature breaks. Check src/web/routes/agents.ts for references to listPendingChannelRequests().\n\n6. **LLM Breakdown Removal:** The kanban card breakdown feature (claude -p call) disappears. The /api/kanban/:id/breakdown endpoint will 404. Mitigation: confirm no dashboard UI tabs or buttons reference this endpoint; if they do, hide or remove the UI before deleting the backend.\n\n7. **Database Schema Fragility:** If token_usage table and related cursors are deleted without a migration script, existing installations with token_usage rows will cause schema mismatch errors on subsequent startups. Safest approach: keep the table schema definition in db.ts (so schema validation passes), but remove all code that POPULATES it (collectTokenUsage function and related). This allows old DBs to coexist without data corruption.\n\n8. **Scheduled Task Type Changes:** If scheduled tasks use type='breakdown' or rely on tokenUsage collection, they will fail silently after removal. Check seed-scheduled-tasks/ and scheduled-tasks/ JSON files for task types. None observed in spot-check (type='heartbeat', 'dream-engine'), but full grep should confirm.\n\n9. **Test Coverage Regression:** Deleting test files (token-usage.test.ts, kanban-breakdown.test.ts) reduces test count from 60 to 58. If CI/CD enforces a minimum test count, this may trigger false-positive failures. Mitigation: document the intentional removal in PROGRESS.md or a MIGRATION file.\n\n10. **Config Naming:** The environment selector is CITADEL_ENV in .env.example. As a fresh fork (not an upgrade path), only the CITADEL_ENV key is read in config.ts; no legacy env-var aliasing is carried over.\n\n**Test Baseline Before Changes:**\nRun `npm test` (vitest) on current codebase, capture baseline:\n- Expected: 60 test files, ~10,367 lines, all passing (green)\n- After deletion of token-usage.test.ts and kanban-breakdown.test.ts: 58 files, ~10,200 lines\n- Any test failure in remaining suite indicates a regression in the rebranding or removal logic\n\n**Session/Identity/Ledger Collision Check:**\n- grep -r \"conversation_ledger\\|session\\|identity\\|agent_id\" src/ --exclude-dir=node_modules confirms no variable name collisions with 'citadel' literal\n- conversation_ledger_schema.test.ts uses agent_id as a schema column, not a function parameter, so rebranding MAIN_AGENT_ID does not affect test validity\n"
+    }
+  ]
+}

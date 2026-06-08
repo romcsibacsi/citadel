@@ -1,0 +1,32 @@
+{
+  "id": "data-analyst",
+  "label": "Adatelemző (személyes adat, saját mappa)",
+  "description": "Scoped adatelemző profil SIGMA-nak: kizárólag személyes adatokon dolgozik a saját munkamappájában. Webes tartalmat is olvashat (prompt injection felület), ezért szigorú: csak a saját mappájába és egy data working area-ba írhat, hitelesítő adatok (SSH/AWS/GnuPG/.env) olvasása tiltva, semmilyen romboló Bash parancs. Soha nem ér el munka/kliens rendszert.",
+  "permissionMode": "strict",
+  "filesystem": {
+    "allow": [
+      "Read(${AGENT_DIR}/**)",
+      "Write(${AGENT_DIR}/**)",
+      "Edit(${AGENT_DIR}/**)",
+      "Read(${AGENT_DIR}/data/**)",
+      "Write(${AGENT_DIR}/data/**)",
+      "Edit(${AGENT_DIR}/data/**)",
+      "Read(${HOME}/Downloads/**)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(python3:*)",
+      "WebFetch(*)",
+      "WebSearch(*)"
+    ],
+    "deny": [
+      "Read(${HOME}/.ssh/**)",
+      "Read(${HOME}/.aws/**)",
+      "Read(${HOME}/.gnupg/**)",
+      "Read(${HOME}/.env)",
+      "Read(**/.env)",
+      "Bash(sudo:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm:*)"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "displayName": "RELAY",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "homelab-full",
+  "accent": "#3b82f6",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}
