@@ -184,6 +184,8 @@ body {
 .sb-link.active { color: var(--text); background: var(--accent-soft); }
 .sb-link.active svg { color: var(--accent); }
 .sb-badge { margin-left: auto; }
+.sb-link .sb-extlink { opacity: 0.4; flex-shrink: 0; }
+.sb-link:hover .sb-extlink { opacity: 0.7; }
 .sidebar-footer {
   padding-top: 12px;
   border-top: 1px solid var(--border);
