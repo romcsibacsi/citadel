@@ -11,6 +11,7 @@ import { promisify } from 'node:util'
 import { PROJECT_ROOT } from '../config.js'
 import { ComfyError, queuePrompt, comfyBaseUrl, type ComfyImageRef } from './comfy-client.js'
 import { ensureComfyUp, freeOllamaVram } from './comfy-wake.js'
+import { concatVideos } from './video-edit.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -18,6 +19,10 @@ const execFileAsync = promisify(execFile)
 // After generation we motion-interpolate (ffmpeg minterpolate) up to TARGET_FPS,
 // preserving the clip duration, for smooth playback.
 const TARGET_FPS = 30
+
+// Folded into every video negative prompt -- the model is prone to extra limbs /
+// 3 legs / fused anatomy; this guard markedly reduces those failures.
+const DEFAULT_VIDEO_NEGATIVE = 'extra limbs, extra legs, extra arms, three legs, missing limbs, deformed, bad anatomy, mutated, fused fingers, extra fingers, distorted, low quality, blurry, watermark, text'
 
 // Probe the FINAL muxed mp4 for its real facts. Interpolation changes the frame
 // count, so #3-honesty (report what was actually rendered, not what was asked)
@@ -59,7 +64,7 @@ const WAN_VAE = 'wan2.2_vae.safetensors'
 // (high does the early/high-noise steps, low finishes). Per-expert Lightning LoRA
 // keeps it to ~4 steps. Flip VIDEO_MODEL to '5b' to revert to the smaller/faster
 // single-expert path (buildWanWorkflow) with no other change.
-const VIDEO_MODEL: '14b' | '5b' = '14b'
+const VIDEO_MODEL: '14b-gguf' | '14b-fp8' | '5b' = '14b-gguf'
 const WAN14 = {
   t2v: {
     high: 'wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors',
@@ -77,6 +82,13 @@ const WAN14 = {
 const WAN14_VAE = 'wan_2.1_vae.safetensors' // 14B uses the 2.1 VAE, NOT the 5B's wan2.2_vae
 const WAN14_FPS = 16                          // A14B is trained at 16fps (81 frames ≈ 5s)
 const WAN14_SHIFT = 8.0                        // ModelSamplingSD3 sigma shift (Wan 2.2 720p default)
+// Q6_K GGUF experts (city96 ComfyUI-GGUF, UnetLoaderGGUF, in models/unet). ~12GB
+// each vs 14.3GB fp8 -> less VRAM offload -> faster. Lightning LoRAs are shared
+// with the fp8 path (WAN14[mode].loraHigh/loraLow).
+const WAN14_GGUF = {
+  t2v: { high: 'Wan2.2-T2V-A14B-HighNoise-Q6_K.gguf', low: 'Wan2.2-T2V-A14B-LowNoise-Q6_K.gguf' },
+  i2v: { high: 'Wan2.2-I2V-A14B-HighNoise-Q6_K.gguf', low: 'Wan2.2-I2V-A14B-LowNoise-Q6_K.gguf' },
+} as const
 
 const OUTPUT_DIR = join(PROJECT_ROOT, 'store', 'comfy-video')
 
@@ -92,6 +104,7 @@ export interface VideoParams {
   steps?: number
   cfg?: number
   seed?: number
+  precision?: 'fp8' | 'gguf' // override the VIDEO_MODEL default (for A/B testing fp8 vs Q6)
 }
 
 export interface VideoResult {
@@ -145,9 +158,15 @@ function buildWanWorkflow(
 function buildWan14BWorkflow(
   p: { prompt: string; negative: string; width: number; height: number; frames: number; fps: number; steps: number; cfg: number; seed: number },
   mode: 't2v' | 'i2v',
+  precision: 'fp8' | 'gguf',
+  lightning: boolean,
   startImageName?: string,
 ): Record<string, unknown> {
-  const m = WAN14[mode]
+  const m = WAN14[mode] // shared Lightning LoRA names
+  const unets = precision === 'gguf' ? WAN14_GGUF[mode] : { high: m.high, low: m.low }
+  const loader = (unet: string): Record<string, unknown> => precision === 'gguf'
+    ? { class_type: 'UnetLoaderGGUF', inputs: { unet_name: unet } }
+    : { class_type: 'UNETLoader', inputs: { unet_name: unet, weight_dtype: 'default' } }
   const boundary = Math.max(1, Math.min(p.steps - 1, Math.round(p.steps / 2)))
   // The 14B uses the wan_2.1_vae (8x spatial / 4x temporal). Wan22ImageToVideoLatent
   // is the 5B TI2V node and sizes the latent at 16x -> it yields HALF-resolution
@@ -160,12 +179,12 @@ function buildWan14BWorkflow(
     : { class_type: 'EmptyHunyuanLatentVideo', inputs: { width: p.width, height: p.height, length: p.frames, batch_size: 1 } }
 
   const wf: Record<string, unknown> = {
-    '37h': { class_type: 'UNETLoader', inputs: { unet_name: m.high, weight_dtype: 'default' } },
-    '37l': { class_type: 'UNETLoader', inputs: { unet_name: m.low, weight_dtype: 'default' } },
-    '61h': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['37h', 0], lora_name: m.loraHigh, strength_model: 1.0 } },
-    '61l': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['37l', 0], lora_name: m.loraLow, strength_model: 1.0 } },
-    '62h': { class_type: 'ModelSamplingSD3', inputs: { model: ['61h', 0], shift: WAN14_SHIFT } },
-    '62l': { class_type: 'ModelSamplingSD3', inputs: { model: ['61l', 0], shift: WAN14_SHIFT } },
+    '37h': loader(unets.high),
+    '37l': loader(unets.low),
+    // Lightning: experts -> LoRA(61) -> shift(62) -> sampler. Accurate mode skips
+    // the LoRA (experts -> shift -> sampler) for better adherence at higher steps.
+    '62h': { class_type: 'ModelSamplingSD3', inputs: { model: [lightning ? '61h' : '37h', 0], shift: WAN14_SHIFT } },
+    '62l': { class_type: 'ModelSamplingSD3', inputs: { model: [lightning ? '61l' : '37l', 0], shift: WAN14_SHIFT } },
     '38': { class_type: 'CLIPLoader', inputs: { clip_name: WAN_CLIP, type: 'wan' } },
     '39': { class_type: 'VAELoader', inputs: { vae_name: WAN14_VAE } },
     '6': { class_type: 'CLIPTextEncode', inputs: { text: p.prompt, clip: ['38', 0] } },
@@ -186,6 +205,10 @@ function buildWan14BWorkflow(
     '41': { class_type: 'SaveVideo', inputs: { video: ['40', 0], filename_prefix: 'citadel/reel', format: 'mp4', codec: 'h264' } },
   }
   if (startImageName) wf['50'] = { class_type: 'LoadImage', inputs: { image: startImageName } }
+  if (lightning) {
+    wf['61h'] = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['37h', 0], lora_name: m.loraHigh, strength_model: 1.0 } }
+    wf['61l'] = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['37l', 0], lora_name: m.loraLow, strength_model: 1.0 } }
+  }
   return wf
 }
 
@@ -273,10 +296,19 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
     startImageName = await uploadComfyImage(readFileSync(srcPath), basename(srcPath))
   }
 
-  const is14b = VIDEO_MODEL === '14b'
-  const width = params.width ?? 1280
-  const height = params.height ?? 704
+  const is14b = VIDEO_MODEL === '14b-gguf' || VIDEO_MODEL === '14b-fp8'
+  // precision override (params.precision) lets a caller A/B the same prompt across
+  // fp8 vs gguf without a rebuild; otherwise it follows VIDEO_MODEL.
+  const precision: 'fp8' | 'gguf' = params.precision ?? (VIDEO_MODEL === '14b-gguf' ? 'gguf' : 'fp8')
+  let width = params.width ?? 1280
+  let height = params.height ?? 704
   const fps = params.fps ?? (is14b ? WAN14_FPS : 24)
+  // One clip's latent caps at 121 frames (≈7.5s @16fps). Longer requests render
+  // multiple full-res clips and concat them (see generateLongVideo).
+  const maxClipSec = Math.floor((121 / fps) * 10) / 10
+  if (params.seconds != null && params.seconds > maxClipSec + 0.3) {
+    return generateLongVideo(params, maxClipSec)
+  }
   // `seconds` (operator-requested duration) wins over `frames`. The Wan VAE
   // temporal stride is 4, so the latent length MUST be 4n+1 (5, 9, … 45, 49 …);
   // a non-conforming value (e.g. 48 from 2s×24fps) is silently rounded DOWN by
@@ -285,20 +317,38 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
   // frame count matches the actual output. Clamped to the 5B's 5..121 range.
   const rawFrames = params.seconds != null ? Math.round(params.seconds * fps) : (params.frames ?? 49)
   const frames = Math.min(Math.max(Math.round((rawFrames - 1) / 4) * 4 + 1, 5), 121)
-  // Lightning LoRAs make the 14B a ~4-step / cfg-1 model; the 5B uses 30 / cfg 5.
-  // The 14B runs Lightning LoRAs (distilled for ~4-8 steps). The UI already
-  // sends mode-appropriate steps for video (4/6/8); just clamp into the Lightning
-  // range so a stray image-steps value (e.g. 45 typed in the modal) can't slow it
-  // down / degrade it. The 5B uses the raw value. cfg is forced to 1 for the 14B
-  // because Lightning requires CFG=1 (a higher cfg produces artifacts).
-  const steps = is14b
-    ? Math.min(Math.max(params.steps ?? 4, 2), 8)
-    : (params.steps ?? 30)
-  const cfg = is14b ? 1 : (params.cfg ?? 5)
+  // 14B step/cfg policy. Lightning (fast default): steps 4..8 + cfg 1 (Lightning
+  // is distilled for few steps + CFG=1). "Pontos"/accurate (requested steps > 12):
+  // drop the Lightning LoRA, use real steps 10..40 + cfg ~4.5 -> much better
+  // prompt/camera adherence + anatomy, but slower. The 5B path is unchanged.
+  let steps: number
+  let cfg: number
+  let useLightning = false
+  if (is14b) {
+    const req = params.steps ?? 4
+    useLightning = req <= 12
+    steps = useLightning ? Math.min(Math.max(req, 2), 8) : Math.min(Math.max(req, 10), 40)
+    cfg = useLightning ? 1 : (params.cfg ?? 4.5)
+  } else {
+    steps = params.steps ?? 30
+    cfg = params.cfg ?? 5
+  }
   const seed = params.seed ?? (randomBytes(4).readUInt32BE(0) % 2_000_000_000)
 
-  const gp = { prompt: params.prompt.trim(), negative: params.negative?.trim() || '', width, height, frames, fps, steps, cfg, seed }
-  const wf = is14b ? buildWan14BWorkflow(gp, mode, startImageName) : buildWanWorkflow(gp, startImageName)
+  // Always fold a strong anatomy guard into the video negative (the model is prone
+  // to extra limbs / 3 legs); the caller's negative is appended after it.
+  const negative = [DEFAULT_VIDEO_NEGATIVE, params.negative?.trim()].filter(Boolean).join(', ')
+
+  // Accurate mode runs cfg>1 -> ~2x activation memory; 720p OOMs past ~2s. Cap the
+  // resolution (max ~960px, /16) so longer accurate clips fit VRAM. Lightning
+  // (cfg 1) keeps full 720p. The clip can be upscaled later if needed.
+  if (is14b && !useLightning) {
+    const cap = 960, mx = Math.max(width, height)
+    if (mx > cap) { const s = cap / mx; width = Math.round((width * s) / 16) * 16; height = Math.round((height * s) / 16) * 16 }
+  }
+
+  const gp = { prompt: params.prompt.trim(), negative, width, height, frames, fps, steps, cfg, seed }
+  const wf = is14b ? buildWan14BWorkflow(gp, mode, precision, useLightning, startImageName) : buildWanWorkflow(gp, startImageName)
 
   const clientId = `citadel-${randomBytes(4).toString('hex')}`
   const promptId = await queuePrompt(wf, clientId)
@@ -347,5 +397,34 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
     fps: probe?.fps || outFps,
     durationSec: probe?.durationSec || durationSec,
     steps, mode, woke: wake.state === 'woke', freedVram,
+  }
+}
+
+// Longer than one clip's latent cap (121 frames ≈ 7.5s @16fps): render N
+// independent full-res clips of the SAME prompt (each already interpolated to
+// TARGET_FPS, so sizes/fps match) and concat them. NOTE: the cut between clips is
+// not seamless -- seamless continuity needs i2v chaining, which is blocked on the
+// 14B i2v latent fix (it currently renders half-resolution). Tracked as a follow-up.
+async function generateLongVideo(params: VideoParams, maxClipSec: number): Promise<VideoResult> {
+  const totalSec = params.seconds as number
+  const numClips = Math.ceil(totalSec / maxClipSec)
+  const secPerClip = Math.round((totalSec / numClips) * 10) / 10
+  const clips: string[] = []
+  let last: VideoResult | null = null
+  for (let i = 0; i < numClips; i++) {
+    last = await generateVideo({ ...params, seconds: secPerClip, seed: params.seed != null ? params.seed + i : undefined })
+    clips.push(last.savedPath)
+  }
+  if (!last || clips.length < 2) return last as VideoResult
+  const out = await concatVideos(clips)
+  const probe = await probeVideo(out)
+  return {
+    ...last,
+    savedPath: out,
+    width: probe?.width ?? last.width,
+    height: probe?.height ?? last.height,
+    frames: probe?.frames ?? last.frames,
+    fps: probe?.fps ?? last.fps,
+    durationSec: probe?.durationSec ?? totalSec,
   }
 }

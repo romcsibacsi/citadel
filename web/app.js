@@ -10196,7 +10196,7 @@ let studioMode = 'image'
 // Quality is a LEVEL; the actual steps depend on the mode (the 14B video model
 // runs Lightning at ~4-8 steps, images use 20-45). So "Magas" = 45 for image but
 // 8 for video, and switching mode re-derives studioSettings.steps.
-const QUALITY_STEPS = { image: { fast: 20, normal: 30, high: 45 }, video: { fast: 4, normal: 6, high: 8 } }
+const QUALITY_STEPS = { image: { fast: 20, normal: 30, high: 45, accurate: 60 }, video: { fast: 4, normal: 6, high: 8, accurate: 20 } }
 let studioQuality = null // 'fast' | 'normal' | 'high' | null
 function applyStudioQuality() {
   if (studioQuality) studioSettings.steps = QUALITY_STEPS[studioMode][studioQuality]
