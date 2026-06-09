@@ -10218,9 +10218,17 @@ document.querySelectorAll('.studio-input-wrap .studio-preset--setting').forEach(
     } else if (g === 'seconds') {
       const sec = +btn.dataset.seconds
       if (studioSettings.seconds === sec) delete studioSettings.seconds; else studioSettings.seconds = sec
+      const ci = document.getElementById('studioCustomSeconds'); if (ci) ci.value = ''
     }
     studioSyncSettingChips()
   })
+})
+// Custom (typed) video length: overrides the 2/3/5 chips. Empty = unset.
+document.getElementById('studioCustomSeconds')?.addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value)
+  if (Number.isFinite(v) && v > 0) studioSettings.seconds = v
+  else delete studioSettings.seconds
+  studioSyncSettingChips()
 })
 
 // Settings modal: fine control that overrides the chips. Empty field = unset.

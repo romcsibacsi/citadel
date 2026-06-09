@@ -5466,6 +5466,7 @@ main {
 .studio-preset--setting.active { background: #6366f1; border-color: #6366f1; color: #fff; }
 .studio-settings-btn { flex: 0 0 auto; width: auto; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 12px; font-size: 12.5px; cursor: pointer; }
 .studio-settings-btn:hover { background: var(--bg-card-hover); }
+.studio-custom-seconds { width: 92px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; }
 /* Settings modal (reuses .modal-overlay / .modal containers). */
 .studio-set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 #studioSettingsModal .modal label, #studioSettingsModal .modal .studio-set-full { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
