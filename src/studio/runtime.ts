@@ -161,6 +161,13 @@ interface ChatMsg { role: string; content: string; tool_calls?: Array<{ function
 // cannot pick the wrong output type (the previous text-only guess was unreliable).
 const IMAGE_TOOL_NAMES = new Set(['generate_image', 'generate_image_with_face'])
 const VIDEO_TOOL_NAMES = new Set(['generate_video', 'animate_image', 'images_to_video', 'concat_videos', 'trim_video', 'extract_frame'])
+// Heavy model-gen tools (NOT the cheap ffmpeg edits) -- counted against the per-run
+// runaway cap so a looping model can't queue a dozen gens from one request.
+const GEN_TOOLS = new Set(['generate_image', 'generate_image_with_face', 'generate_video', 'animate_image'])
+// One studio gen at a time: the GPU serializes anyway, and a second concurrent
+// request was the cause of the runaway queue of degenerate gens. Shared by both
+// the /api/studio/run path and the dispatcher (both call runStudio).
+let studioRunning = false
 function toolsForMode(mode?: 'image' | 'video'): typeof TOOLS {
   if (mode === 'image') return TOOLS.filter(t => IMAGE_TOOL_NAMES.has(t.function.name))
   if (mode === 'video') return TOOLS.filter(t => VIDEO_TOOL_NAMES.has(t.function.name))
@@ -209,36 +216,48 @@ async function ollamaChat(model: string, messages: ChatMsg[], tools: unknown[]):
 export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings; mode?: 'image' | 'video' } = {}): Promise<StudioResult> {
   const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
   await preflightOllama(model) // clear, actionable error if ollama/model is unreachable
-  const maxRounds = opts.maxRounds ?? 10
-  const settings = opts.settings ?? {}
-  // Explicit Kép/Videó mode from the UI restricts the offered tools so the model
-  // cannot pick the wrong output type (no more guessing from the request text).
-  const tools = toolsForMode(opts.mode)
-  const modeHint = opts.mode === 'image' ? ' [MÓD: KÉP — kizárólag EGY képet generálj.]'
-    : opts.mode === 'video' ? ' [MÓD: VIDEÓ — EGY videót generálj.]' : ''
-  const summary = describeSettings(settings)
-  const userContent = (summary
-    ? `${request}\n\n[Operátori beállítások — ezek FELÜLÍRJÁK a tool-args-okat, ezekhez igazodj: ${summary}]`
-    : request) + modeHint
-  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: userContent }]
-  const files: string[] = []
-  const log: StudioLogLine[] = []
+  if (studioRunning) throw new Error('Már fut egy stúdió-generálás — a GPU-n egyszerre egy mehet. Várd meg, amíg az befejeződik, aztán indítsd újra.')
+  studioRunning = true
+  try {
+    const maxRounds = opts.maxRounds ?? 10
+    const settings = opts.settings ?? {}
+    // Explicit Kép/Videó mode from the UI restricts the offered tools so the model
+    // cannot pick the wrong output type (no more guessing from the request text).
+    const tools = toolsForMode(opts.mode)
+    const modeHint = opts.mode === 'image' ? ' [MÓD: KÉP — kizárólag EGY képet generálj.]'
+      : opts.mode === 'video' ? ' [MÓD: VIDEÓ — EGY videót generálj.]' : ''
+    const summary = describeSettings(settings)
+    const userContent = (summary
+      ? `${request}\n\n[Operátori beállítások — ezek FELÜLÍRJÁK a tool-args-okat, ezekhez igazodj: ${summary}]`
+      : request) + modeHint
+    const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: userContent }]
+    const files: string[] = []
+    const log: StudioLogLine[] = []
+    let genCount = 0
+    const MAX_GENS = 5 // bound a runaway loop where the model keeps re-calling a gen tool
 
-  for (let round = 0; round < maxRounds; round++) {
-    const msg = await ollamaChat(model, messages, tools)
-    messages.push(msg)
-    const calls = msg.tool_calls || []
-    if (!calls.length) {
-      if (msg.content) log.push({ role: 'assistant', text: msg.content })
-      return { reply: msg.content || '(nincs szöveges válasz)', files, log }
+    for (let round = 0; round < maxRounds; round++) {
+      const msg = await ollamaChat(model, messages, tools)
+      messages.push(msg)
+      const calls = msg.tool_calls || []
+      if (!calls.length) {
+        if (msg.content) log.push({ role: 'assistant', text: msg.content })
+        return { reply: msg.content || '(nincs szöveges válasz)', files, log }
+      }
+      for (const c of calls) {
+        let result: string
+        try { result = await runTool(c.function.name, c.function.arguments || {}, files, settings) }
+        catch (e) { result = `HIBA (${c.function.name}): ${e instanceof Error ? e.message : String(e)}` }
+        log.push({ role: 'tool', text: `${c.function.name} → ${result}` })
+        messages.push({ role: 'tool', content: result })
+        if (GEN_TOOLS.has(c.function.name)) genCount++
+      }
+      if (genCount >= MAX_GENS) {
+        return { reply: `Kész (elértem a ${MAX_GENS} generálásos felső korlátot egy kérésen belül).`, files, log }
+      }
     }
-    for (const c of calls) {
-      let result: string
-      try { result = await runTool(c.function.name, c.function.arguments || {}, files, settings) }
-      catch (e) { result = `HIBA (${c.function.name}): ${e instanceof Error ? e.message : String(e)}` }
-      log.push({ role: 'tool', text: `${c.function.name} → ${result}` })
-      messages.push({ role: 'tool', content: result })
-    }
+    return { reply: `Elértem a maximális lépésszámot (${maxRounds}).`, files, log }
+  } finally {
+    studioRunning = false
   }
-  return { reply: `Elértem a maximális lépésszámot (${maxRounds}).`, files, log }
 }
