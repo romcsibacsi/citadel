@@ -168,15 +168,24 @@ function buildWan14BWorkflow(
     ? { class_type: 'UnetLoaderGGUF', inputs: { unet_name: unet } }
     : { class_type: 'UNETLoader', inputs: { unet_name: unet, weight_dtype: 'default' } }
   const boundary = Math.max(1, Math.min(p.steps - 1, Math.round(p.steps / 2)))
-  // The 14B uses the wan_2.1_vae (8x spatial / 4x temporal). Wan22ImageToVideoLatent
-  // is the 5B TI2V node and sizes the latent at 16x -> it yields HALF-resolution
-  // output with the 2.1 VAE. For t2v use EmptyHunyuanLatentVideo, whose 8x/4x
-  // geometry + 16-channel latent matches the 2.1 VAE (the established ComfyUI node
-  // for Wan t2v). i2v still needs the start-image encode, so it keeps the Wan22
-  // node (see the i2v note below).
-  const latentNode: Record<string, unknown> = startImageName
-    ? { class_type: 'Wan22ImageToVideoLatent', inputs: { vae: ['39', 0], width: p.width, height: p.height, length: p.frames, batch_size: 1, start_image: ['50', 0] } }
+  // The 14B uses the wan_2.1_vae (8x spatial / 4x temporal).
+  //  t2v: EmptyHunyuanLatentVideo -- its 8x/4x geometry + 16-channel latent matches
+  //       the 2.1 VAE (the established ComfyUI node for Wan t2v).
+  //  i2v: WanImageToVideo -- the proper 14B i2v node. It VAE-encodes the start image
+  //       into a FULL-resolution latent at the 2.1 VAE's 8x stride AND injects it
+  //       into the conditioning, returning its own (positive, negative, latent)
+  //       on outputs 0/1/2. (Wan22ImageToVideoLatent is the 5B TI2V node at 16x ->
+  //       it yields HALF-resolution with the 2.1 VAE, so it is NOT used for the 14B.)
+  //       Wan 2.2 I2V-A14B needs no clip-vision conditioning, so it is omitted.
+  const isI2V = !!startImageName
+  const latentNode: Record<string, unknown> = isI2V
+    ? { class_type: 'WanImageToVideo', inputs: { positive: ['6', 0], negative: ['7', 0], vae: ['39', 0], width: p.width, height: p.height, length: p.frames, batch_size: 1, start_image: ['50', 0] } }
     : { class_type: 'EmptyHunyuanLatentVideo', inputs: { width: p.width, height: p.height, length: p.frames, batch_size: 1 } }
+  // i2v reroutes the samplers through WanImageToVideo's image-injected conditioning
+  // + latent (node 55 outputs 0/1/2); t2v uses the raw text encodes + empty latent.
+  const posCond: [string, number] = isI2V ? ['55', 0] : ['6', 0]
+  const negCond: [string, number] = isI2V ? ['55', 1] : ['7', 0]
+  const initLatent: [string, number] = isI2V ? ['55', 2] : ['55', 0]
 
   const wf: Record<string, unknown> = {
     '37h': loader(unets.high),
@@ -192,12 +201,12 @@ function buildWan14BWorkflow(
     '55': latentNode,
     '3h': { class_type: 'KSamplerAdvanced', inputs: {
       add_noise: 'enable', noise_seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'simple',
-      model: ['62h', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['55', 0],
+      model: ['62h', 0], positive: posCond, negative: negCond, latent_image: initLatent,
       start_at_step: 0, end_at_step: boundary, return_with_leftover_noise: 'enable',
     } },
     '3l': { class_type: 'KSamplerAdvanced', inputs: {
       add_noise: 'disable', noise_seed: p.seed, steps: p.steps, cfg: p.cfg, sampler_name: 'euler', scheduler: 'simple',
-      model: ['62l', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['3h', 0],
+      model: ['62l', 0], positive: posCond, negative: negCond, latent_image: ['3h', 0],
       start_at_step: boundary, end_at_step: 10000, return_with_leftover_noise: 'disable',
     } },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['3l', 0], vae: ['39', 0] } },
@@ -404,31 +413,73 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
   }
 }
 
-// Longer than one clip's latent cap (121 frames ≈ 7.5s @16fps): render N
-// independent full-res clips of the SAME prompt (each already interpolated to
-// TARGET_FPS, so sizes/fps match) and concat them. NOTE: the cut between clips is
-// not seamless -- seamless continuity needs i2v chaining, which is blocked on the
-// 14B i2v latent fix (it currently renders half-resolution). Tracked as a follow-up.
+// Grab a clip's FINAL frame as a PNG into a scratch dir under the video-output
+// root (an allowed I2V source root -- and NOT the image gallery store/comfy, so
+// chain frames don't pollute it). Used to seed the next clip for continuity.
+// -sseof -0.5 decodes only the last ~0.5s; -update 1 overwrites, leaving the last
+// frame written.
+const CHAIN_DIR = join(OUTPUT_DIR, '.chain')
+async function extractLastFrame(videoPath: string): Promise<string> {
+  mkdirSync(CHAIN_DIR, { recursive: true })
+  const out = join(CHAIN_DIR, `${randomBytes(6).toString('hex')}.png`)
+  await execFileAsync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+    '-sseof', '-0.5', '-i', videoPath, '-update', '1', out], { timeout: 30_000 })
+  return out
+}
+
+// Longer than one clip's latent cap (121 frames ≈ 7.5s @16fps): render the video
+// as a CHAIN of clips for seamless continuity. Clip 0 is t2v (or i2v from a
+// supplied start image); each subsequent clip is i2v seeded with the PREVIOUS
+// clip's final frame, so the motion continues across the cut instead of jumping
+// to an unrelated take. All clips share fps/size (each already interpolated to
+// TARGET_FPS) and are concatenated. After a successful concat the intermediate
+// clips + scratch frames are removed -- only the final video remains.
 async function generateLongVideo(params: VideoParams, maxClipSec: number): Promise<VideoResult> {
   const totalSec = params.seconds as number
   const numClips = Math.ceil(totalSec / maxClipSec)
   const secPerClip = Math.round((totalSec / numClips) * 10) / 10
   const clips: string[] = []
+  const scratch: string[] = []
   let last: VideoResult | null = null
+  let chainImage = params.imagePath // clip 0: supplied start image (i2v) or undefined (t2v)
   for (let i = 0; i < numClips; i++) {
-    last = await generateVideo({ ...params, seconds: secPerClip, seed: params.seed != null ? params.seed + i : undefined })
+    last = await generateVideo({
+      ...params,
+      seconds: secPerClip,
+      imagePath: chainImage,
+      seed: params.seed != null ? params.seed + i : undefined,
+    })
     clips.push(last.savedPath)
+    // Seed the NEXT clip with this clip's final frame -> seamless continuation.
+    if (i < numClips - 1) {
+      try {
+        chainImage = await extractLastFrame(last.savedPath)
+        scratch.push(chainImage)
+      } catch {
+        chainImage = undefined // extraction failed -> next clip falls back to t2v
+      }
+    }
   }
   if (!last || clips.length < 2) return last as VideoResult
-  const out = await concatVideos(clips)
-  const probe = await probeVideo(out)
-  return {
-    ...last,
-    savedPath: out,
-    width: probe?.width ?? last.width,
-    height: probe?.height ?? last.height,
-    frames: probe?.frames ?? last.frames,
-    fps: probe?.fps ?? last.fps,
-    durationSec: probe?.durationSec ?? totalSec,
+  // Honest metadata: report clip 0's origin (t2v unless a start image was supplied),
+  // not `last` -- which is always an i2v chain clip for a multi-clip video.
+  const originMode: 't2v' | 'i2v' = params.imagePath?.trim() ? 'i2v' : 't2v'
+  try {
+    const out = await concatVideos(clips)
+    const probe = await probeVideo(out)
+    return {
+      ...last,
+      savedPath: out,
+      mode: originMode,
+      width: probe?.width ?? last.width,
+      height: probe?.height ?? last.height,
+      frames: probe?.frames ?? last.frames,
+      fps: probe?.fps ?? last.fps,
+      durationSec: probe?.durationSec ?? totalSec,
+    }
+  } finally {
+    // Best-effort sweep of intermediates -- runs even if concat throws, so a failed
+    // concat doesn't leak per-clip files + .chain scratch frames.
+    for (const f of [...clips, ...scratch]) { try { unlinkSync(f) } catch { /* ignore */ } }
   }
 }

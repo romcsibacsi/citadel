@@ -15,7 +15,7 @@ function parseSettings(raw: unknown): StudioSettings {
   const st: StudioSettings = {}
   const w = num(o.width, 256, 2048); if (w) st.width = Math.round(w)
   const h = num(o.height, 256, 2048); if (h) st.height = Math.round(h)
-  const sec = num(o.seconds, 1, 10); if (sec) st.seconds = sec
+  const sec = num(o.seconds, 1, 60); if (sec) st.seconds = sec
   const fr = num(o.frames, 5, 241); if (fr) st.frames = Math.round(fr)
   const stp = num(o.steps, 1, 80); if (stp) st.steps = Math.round(stp)
   const cfg = num(o.cfg, 1, 20); if (cfg) st.cfg = cfg

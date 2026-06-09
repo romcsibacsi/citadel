@@ -1295,7 +1295,7 @@
               <button class="studio-preset studio-preset--setting" type="button" data-seconds="2">2 mp</button>
               <button class="studio-preset studio-preset--setting" type="button" data-seconds="3">3 mp</button>
               <button class="studio-preset studio-preset--setting" type="button" data-seconds="5">5 mp</button>
-              <input type="number" id="studioCustomSeconds" class="studio-custom-seconds" min="1" max="10" step="0.5" placeholder="egyéni mp" title="Egyéni videóhossz másodpercben">
+              <input type="number" id="studioCustomSeconds" class="studio-custom-seconds" min="1" max="60" step="0.5" placeholder="egyéni mp" title="Egyéni videóhossz másodpercben (max 60 — 7,5 mp fölött a rendszer i2v-láncolt klipekből fűzi össze)">
             </div>
           </div>
         </div>
@@ -1313,7 +1313,7 @@
             <label>Magasság (px)<input type="number" id="setHeight" min="256" max="2048" step="8" placeholder="auto"></label>
             <label>Minőség (steps)<input type="number" id="setSteps" min="1" max="80" placeholder="auto"></label>
             <label>CFG (prompt-követés)<input type="number" id="setCfg" min="1" max="20" step="0.5" placeholder="auto"></label>
-            <label>Hossz (mp, videó)<input type="number" id="setSeconds" min="1" max="10" step="0.5" placeholder="auto"></label>
+            <label>Hossz (mp, videó)<input type="number" id="setSeconds" min="1" max="60" step="0.5" placeholder="auto"></label>
             <label>Seed (üres = véletlen)<input type="number" id="setSeed" min="0" placeholder="random"></label>
           </div>
           <label class="studio-set-full">Negatív prompt (amit NE tartalmazzon)<textarea id="setNegative" rows="2" placeholder="pl. elmosódott, torz kéz, szöveg"></textarea></label>

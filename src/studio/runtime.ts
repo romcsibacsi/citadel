@@ -42,12 +42,12 @@ const TOOLS = [
   }),
   fn('generate_video', 'Szöveg→videó (Wan 2.2). Írd le a mozgást/kameramozgást. Visszaadja az mp4 útját.', {
     prompt: ['string', 'Angol prompt mozgás-leírással.', true], negative: ['string', 'Negatív prompt.'],
-    seconds: ['number', 'Kívánt hossz másodpercben — HASZNÁLD EZT, ha a felhasználó mp-ben kér (max ~5s).'],
+    seconds: ['number', 'Kívánt hossz másodpercben — HASZNÁLD EZT, ha a felhasználó mp-ben kér (1–60s; ~7,5s fölött a rendszer automatikusan i2v-láncolt klipekből fűzi össze).'],
     frames: ['integer', 'Kockaszám 5-121 (alap 49) — csak ha nincs seconds.'], seed: ['integer', 'Seed.'],
   }),
   fn('animate_image', 'Kép→videó: egy meglévő képet mozgat a prompt szerint (Wan 2.2 I2V).', {
     image_path: ['string', 'A kiinduló kép útja.', true], prompt: ['string', 'A mozgás angol leírása.', true],
-    seconds: ['number', 'Kívánt hossz mp-ben (max ~5s).'], frames: ['integer', 'Kockaszám (alap 49) — csak ha nincs seconds.'],
+    seconds: ['number', 'Kívánt hossz mp-ben (1–60s; ~7,5s fölött a rendszer automatikusan i2v-láncolt klipekből fűzi össze).'], frames: ['integer', 'Kockaszám (alap 49) — csak ha nincs seconds.'],
   }),
   fn('images_to_video', 'Állóképekből diavetítés-videó (mindegyik kép N mp).', {
     paths: ['array', 'A képek elérési útjai sorrendben.', true], seconds_per_image: ['number', 'Mp/kép (alap 3).'],
