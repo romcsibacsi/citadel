@@ -167,13 +167,38 @@ function toolsForMode(mode?: 'image' | 'video'): typeof TOOLS {
   return TOOLS
 }
 
+// Preflight before the gen loop: turn the cryptic raw fetch error / 404 into an
+// actionable message. The classic trap: with WSL2 mirrored networking the Windows
+// ollama can grab :11434 and shadow the WSL ollama (where muse-brain lives), or
+// the WSL box/sshd is down entirely.
+async function preflightOllama(model: string): Promise<void> {
+  const base = OLLAMA_URL.replace(/\/+$/, '')
+  let names: string[]
+  try {
+    const res = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) throw new Error(`/api/tags -> ${res.status}`)
+    const data = (await res.json()) as { models?: Array<{ name?: string }> }
+    names = (data.models || []).map(m => m?.name).filter((n): n is string => !!n)
+  } catch (e) {
+    throw new Error(`Az ollama nem elérhető (${base}). Fut a WSL ollama és az SSH-tunnel? A WSL-box (sshd:2222) lehet, hogy le van állva — indítsd el a WSL-t. [${e instanceof Error ? e.message : String(e)}]`)
+  }
+  if (!names.includes(model)) {
+    throw new Error(`A(z) "${model}" modell nincs az ollama-n (${base}). Valószínűleg a WINDOWS ollama fogja a 11434-et a WSL helyett — állítsd le a Windows ollamát / indítsd a WSL ollamát. Elérhető modellek: ${names.slice(0, 8).join(', ') || '(egy modell sincs!)'}`)
+  }
+}
+
 async function ollamaChat(model: string, messages: ChatMsg[], tools: unknown[]): Promise<ChatMsg> {
   const base = OLLAMA_URL.replace(/\/+$/, '')
-  const res = await fetch(`${base}/api/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, tools, stream: false }),
-    signal: AbortSignal.timeout(OLLAMA_CHAT_TIMEOUT_MS),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${base}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, tools, stream: false }),
+      signal: AbortSignal.timeout(OLLAMA_CHAT_TIMEOUT_MS),
+    })
+  } catch (e) {
+    throw new Error(`Az ollama nem elérhető (${base}) a generálás közben: ${e instanceof Error ? e.message : String(e)}. Fut a WSL ollama + a tunnel?`)
+  }
   if (!res.ok) throw new Error(`ollama /api/chat -> ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
   const data = await res.json() as { message?: ChatMsg }
   if (!data.message) throw new Error('ollama válaszában nincs message')
@@ -183,6 +208,7 @@ async function ollamaChat(model: string, messages: ChatMsg[], tools: unknown[]):
 // Run the studio loop for one request. maxRounds bounds the tool back-and-forth.
 export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings; mode?: 'image' | 'video' } = {}): Promise<StudioResult> {
   const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
+  await preflightOllama(model) // clear, actionable error if ollama/model is unreachable
   const maxRounds = opts.maxRounds ?? 10
   const settings = opts.settings ?? {}
   // Explicit Kép/Videó mode from the UI restricts the offered tools so the model
