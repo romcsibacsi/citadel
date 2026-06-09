@@ -57,7 +57,7 @@ let busy = false
 // marked failed -- but the GPU lock is NOT released here (see below). runStudio
 // is internally bounded (ollama per-turn timeout + ComfyUI 180s poll deadline),
 // so the lock always releases when the job's own promise settles.
-const STUDIO_WATCHDOG_MS = 20 * 60 * 1000
+const STUDIO_WATCHDOG_MS = 35 * 60 * 1000 // > the 30-min per-clip gen wait, so a slow video isn't prematurely reported failed
 
 function formatReply(files: string[], reply: string): string {
   const body = reply.trim()

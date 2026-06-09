@@ -352,7 +352,11 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
 
   const clientId = `citadel-${randomBytes(4).toString('hex')}`
   const promptId = await queuePrompt(wf, clientId)
-  const outs = await waitForVideoOutput(promptId)
+  // 30 min wait: the 14B (esp. accurate/no-Lightning, or a thermally-throttled
+  // 5090) can legitimately run several minutes per clip; the old 10 min default
+  // abandoned slow-but-valid gens even though ComfyUI finished them. The per-poll
+  // socket timeout (COMFY_REQUEST_TIMEOUT_MS) still bounds a genuinely hung host.
+  const outs = await waitForVideoOutput(promptId, { timeoutMs: 1_800_000 })
   if (!outs.length) throw new ComfyError('A ComfyUI nem adott vissza videó-kimenetet.')
 
   mkdirSync(OUTPUT_DIR, { recursive: true })
