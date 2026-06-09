@@ -43,8 +43,8 @@ interface CalendarListResponse {
 // an out-of-process re-auth (the OAuth-mcp `auth` subcommand writes a fresh
 // tokens.json from a separate process, our cache never re-reads it). Track
 // the file's mtime alongside the parsed payload; re-read whenever the mtime
-// advances. 2026-06-02 14:30 incident: after Szabi re-authed at 16:26 the
-// dashboard kept dropping `Google token refresh failed` until a manual
+// advances. 2026-06-02 incident: after a re-auth the dashboard kept dropping
+// `Google token refresh failed` until a manual
 // process restart, because cachedTokens held the pre-re-auth (88-day-old,
 // already-revoked) refresh_token.
 let cachedTokens: { normal: TokenData; mtimeMs: number } | null = null
