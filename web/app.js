@@ -10130,7 +10130,7 @@ async function runStudioRequest() {
   try {
     const res = await fetch('/api/studio/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ request: req, settings: studioSettings }),
+      body: JSON.stringify({ request: req, settings: studioSettings, mode: studioMode }),
     })
     const d = await res.json().catch(() => ({}))
     if (d.error) { status.textContent = 'Hiba: ' + d.error; return }
@@ -10230,6 +10230,19 @@ document.getElementById('studioCustomSeconds')?.addEventListener('input', (e) =>
   else delete studioSettings.seconds
   studioSyncSettingChips()
 })
+
+// Kép / Videó mode: sent to the backend (which forces the matching tools so the
+// model can't pick the wrong output type), and shows/hides the video-only preset
+// groups (Mozgás, Hossz) so image mode isn't cluttered with video settings.
+let studioMode = 'image'
+function applyStudioMode() {
+  document.querySelectorAll('#studioModeToggle .studio-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === studioMode))
+  document.querySelectorAll('.studio-input-wrap .studio-video-only').forEach(g => { g.style.display = studioMode === 'video' ? '' : 'none' })
+}
+document.querySelectorAll('#studioModeToggle .studio-mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => { studioMode = btn.dataset.mode; applyStudioMode() })
+})
+applyStudioMode()
 
 // Settings modal: fine control that overrides the chips. Empty field = unset.
 function studioOpenSettings() {

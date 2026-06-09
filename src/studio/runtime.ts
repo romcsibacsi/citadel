@@ -157,11 +157,21 @@ async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSet
 
 interface ChatMsg { role: string; content: string; tool_calls?: Array<{ function: { name: string; arguments: ToolArgs } }> }
 
-async function ollamaChat(model: string, messages: ChatMsg[]): Promise<ChatMsg> {
+// Explicit Kép/Videó mode -> only the matching tools are offered, so the model
+// cannot pick the wrong output type (the previous text-only guess was unreliable).
+const IMAGE_TOOL_NAMES = new Set(['generate_image', 'generate_image_with_face'])
+const VIDEO_TOOL_NAMES = new Set(['generate_video', 'animate_image', 'images_to_video', 'concat_videos', 'trim_video', 'extract_frame'])
+function toolsForMode(mode?: 'image' | 'video'): typeof TOOLS {
+  if (mode === 'image') return TOOLS.filter(t => IMAGE_TOOL_NAMES.has(t.function.name))
+  if (mode === 'video') return TOOLS.filter(t => VIDEO_TOOL_NAMES.has(t.function.name))
+  return TOOLS
+}
+
+async function ollamaChat(model: string, messages: ChatMsg[], tools: unknown[]): Promise<ChatMsg> {
   const base = OLLAMA_URL.replace(/\/+$/, '')
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, tools: TOOLS, stream: false }),
+    body: JSON.stringify({ model, messages, tools, stream: false }),
     signal: AbortSignal.timeout(OLLAMA_CHAT_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`ollama /api/chat -> ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
@@ -171,20 +181,25 @@ async function ollamaChat(model: string, messages: ChatMsg[]): Promise<ChatMsg> 
 }
 
 // Run the studio loop for one request. maxRounds bounds the tool back-and-forth.
-export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings } = {}): Promise<StudioResult> {
+export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings; mode?: 'image' | 'video' } = {}): Promise<StudioResult> {
   const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
   const maxRounds = opts.maxRounds ?? 10
   const settings = opts.settings ?? {}
+  // Explicit Kép/Videó mode from the UI restricts the offered tools so the model
+  // cannot pick the wrong output type (no more guessing from the request text).
+  const tools = toolsForMode(opts.mode)
+  const modeHint = opts.mode === 'image' ? ' [MÓD: KÉP — kizárólag EGY képet generálj.]'
+    : opts.mode === 'video' ? ' [MÓD: VIDEÓ — EGY videót generálj.]' : ''
   const summary = describeSettings(settings)
-  const userContent = summary
+  const userContent = (summary
     ? `${request}\n\n[Operátori beállítások — ezek FELÜLÍRJÁK a tool-args-okat, ezekhez igazodj: ${summary}]`
-    : request
+    : request) + modeHint
   const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: userContent }]
   const files: string[] = []
   const log: StudioLogLine[] = []
 
   for (let round = 0; round < maxRounds; round++) {
-    const msg = await ollamaChat(model, messages)
+    const msg = await ollamaChat(model, messages, tools)
     messages.push(msg)
     const calls = msg.tool_calls || []
     if (!calls.length) {

@@ -31,14 +31,15 @@ function parseSettings(raw: unknown): StudioSettings {
 export async function tryHandleStudio(ctx: RouteContext): Promise<boolean> {
   const { req, res, path, method } = ctx
   if (path === '/api/studio/run' && method === 'POST') {
-    let body: { request?: unknown; model?: unknown; settings?: unknown }
+    let body: { request?: unknown; model?: unknown; settings?: unknown; mode?: unknown }
     try { body = JSON.parse((await readBody(req, { maxBytes: 64 * 1024 })).toString()) } catch { json(res, { error: 'bad body' }, 400); return true }
     const request = String(body?.request ?? '').trim()
     if (!request) { json(res, { error: 'A request mező kötelező.' }, 400); return true }
     const model = typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : undefined
     const settings = parseSettings(body?.settings)
+    const mode = body?.mode === 'image' || body?.mode === 'video' ? body.mode : undefined
     try {
-      const r = await runStudio(request, { model, settings })
+      const r = await runStudio(request, { model, settings, mode })
       json(res, r)
     } catch (err) {
       json(res, { error: err instanceof Error ? err.message : String(err) }, 500)

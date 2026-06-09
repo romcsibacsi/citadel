@@ -1234,6 +1234,10 @@
         </div>
       </div>
       <div class="studio-input-wrap">
+        <div class="studio-mode-toggle" id="studioModeToggle">
+          <button class="studio-mode-btn active" type="button" data-mode="image">🖼 Kép</button>
+          <button class="studio-mode-btn" type="button" data-mode="video">🎬 Videó</button>
+        </div>
         <textarea id="studioRequest" class="studio-textarea" rows="3" placeholder="Pl.: Csinálj 3 képet egy retró robotról különböző pózokban, majd fűzd őket egy diavetítés-videóba."></textarea>
         <div class="studio-presetbar">
           <div class="studio-preset-group">
@@ -1254,7 +1258,7 @@
               <button class="studio-preset" type="button" data-style="black and white, film noir, strong shadows">Noir</button>
             </div>
           </div>
-          <div class="studio-preset-group">
+          <div class="studio-preset-group studio-video-only">
             <span class="studio-preset-label">Mozgás (videó)</span>
             <div class="studio-presets">
               <button class="studio-preset studio-preset--motion" type="button" data-style="lassú ráközelítés a kamerával">Ráközelítés</button>
@@ -1284,7 +1288,7 @@
               <button class="studio-preset studio-preset--setting" type="button" data-steps="45">Magas</button>
             </div>
           </div>
-          <div class="studio-preset-group">
+          <div class="studio-preset-group studio-video-only">
             <span class="studio-preset-label">Hossz (videó)</span>
             <div class="studio-presets" data-setting-group="seconds">
               <button class="studio-preset studio-preset--setting" type="button" data-seconds="2">2 mp</button>
