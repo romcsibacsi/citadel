@@ -65,8 +65,28 @@ keep-alive). Részletek: [heartbeat-autonomy.md](./heartbeat-autonomy.md).
 
 ## Megjegyzések / hátralévő
 
-- **bumblebee-hygiene-scan** (heti supply-chain biztonsági szken) NINCS telepítve: a `~/.local/bin/bumblebee`
-  Go-binárist igényel, és a gépen nincs Go telepítve, a seed pedig nem szállít forrást/binárist. Ha kell:
-  telepíts Go-t + építsd a binárist, majd vedd fel a feladatot (`seed-scheduled-tasks/bumblebee-hygiene-scan`).
+- **bumblebee-hygiene-scan** (heti supply-chain biztonsági szken) NINCS telepítve — Go bináris kell hozzá.
+  Mi ez: a **Perplexity Bumblebee** (`github.com/perplexityai/bumblebee`, Apache 2.0) read-only szkenner,
+  ami leltárba veszi a telepített csomagokat / MCP-szervereket / kiterjesztéseket, és ismert
+  supply-chain támadás-katalógusokhoz illeszti (a seed 6 katalógust szállít: shai-hulud, node-ipc-stealer,
+  nx-console, shopsprint typosquat, gemstuffer). Hétfő 09:00, csak egyezésnél riaszt.
+
+  **Telepítés (sudo nélkül megoldható):**
+  ```bash
+  # 1) Go >= 1.25 (no-sudo: tarball a home-ba)
+  cd /tmp && curl -fLO https://go.dev/dl/go1.25.0.linux-amd64.tar.gz   # vagy a friss verzió a go.dev/dl-ről
+  mkdir -p ~/.local && tar -C ~/.local -xzf go1.25.0.linux-amd64.tar.gz   # -> ~/.local/go
+  # 2) bumblebee build (v0.1.1)
+  cd /tmp && git clone https://github.com/perplexityai/bumblebee && cd bumblebee && git checkout v0.1.1
+  ~/.local/go/bin/go build -o ~/.local/bin/bumblebee ./cmd/bumblebee
+  ~/.local/bin/bumblebee --version   # ellenőrzés
+  # 3) feladat telepítése (a SKILL.md self-skip-el, ha a bináris hiányzik):
+  D=~/.claude/scheduled-tasks/bumblebee-hygiene-scan; mkdir -p "$D"
+  for f in seed-scheduled-tasks/bumblebee-hygiene-scan/*.{md,json}; do
+    sed -e 's|{{INSTALL_DIR}}|/home/uplinkfather/CITADEL/citadel|g' -e 's/{{MAIN_AGENT_ID}}/nexus/g' "$f" > "$D/$(basename "$f")"; done
+  # a task-config type=heartbeat -> add "bypassTriage": true, hogy ténylegesen fusson (lásd lent).
+  ```
+  A 6 threat-intel katalógust a SKILL.md első futáskor magától bemásolja `~/.claude/tools/bumblebee-threat-intel`-be.
+  A SKILL.md hibamentesen kihagyja a szkent, amíg a bináris nincs meg — így a feladat előre telepíthető.
 - A `runDailyDigest` chat-kulcsú (ALLOWED_CHAT_ID) — a heartbeat-memóriák ehhez a chathez taggelve íródnak,
   így a digest látja őket. (A küszöb 1 emlékre csökkentve, hogy csendes napon is fusson.)
