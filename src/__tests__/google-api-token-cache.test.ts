@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 // Contract tests for the 2026-06-02 14:30 hb regression after Calendar
-// re-auth. Symptom: Szabi re-authed at 16:26 (live HTTP 200 verified), but
+// re-auth. Symptom: the operator re-authed at 16:26 (live HTTP 200 verified), but
 // the heartbeat kept logging `Google token refresh failed` because the
 // dashboard's module-level cachedTokens still held the pre-re-auth (88-day
 // expired, revoked) refresh_token. Manual dashboard restart fixed the

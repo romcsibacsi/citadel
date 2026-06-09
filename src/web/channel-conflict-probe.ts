@@ -1,7 +1,7 @@
 // Telegram 409 Conflict probe. Used by channel-monitor to confirm and LOG the
 // real cause of a channel disconnect, instead of inferring it from a pane-grep.
 //
-// Background (2026-06-01, Szabi explicit request): the existing health monitor
+// Background (2026-06-01, the operator explicit request): the existing health monitor
 // flags the plugin as "down" based on pane scanning - it does not record what
 // the upstream provider actually returned. When the cause is the orphan-poller
 // race fixed by PR #225 (and now stage-3 in the same PR), Telegram returns
@@ -12,7 +12,7 @@
 //       make sure that only one bot instance is running" }
 //
 // on every getUpdates call. Without that log line in dashboard.log, an
-// operator (Szabi) cannot distinguish a real network/hardware issue from the
+// operator (the operator) cannot distinguish a real network/hardware issue from the
 // orphan-poller bug. This module probes the upstream HTTP API directly with
 // a short-timeout getUpdates call when the monitor first sees a down state,
 // so the dashboard.log carries explicit evidence of the 409.

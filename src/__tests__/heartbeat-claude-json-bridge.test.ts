@@ -11,7 +11,7 @@ import { join } from 'node:path'
 //   - Fix: copy ~/.claude.json into the isolated config dir and duplicate
 //     projects[PROJECT_ROOT] under projects[HEARTBEAT_AGENT_CWD].
 //   - Plus: dashboard-hide sentinel so the heartbeat-worker dir doesn't
-//     pollute the agent list (Szabi 14:31 ask).
+//     pollute the agent list (the operator 14:31 ask).
 
 const HB_SRC = readFileSync(join(__dirname, '../heartbeat.ts'), 'utf-8')
 const CFG_SRC = readFileSync(join(__dirname, '../web/agent-config.ts'), 'utf-8')
@@ -66,7 +66,7 @@ describe('heartbeat ~/.claude.json bridge (2026-06-02 14:27 regression fix)', ()
   })
 })
 
-describe('dashboard-hide sentinel (Szabi 2026-06-02 14:31 ask)', () => {
+describe('dashboard-hide sentinel (the operator 2026-06-02 14:31 ask)', () => {
   it('agent-config exports HIDDEN_AGENT_SENTINEL', () => {
     expect(CFG_SRC).toMatch(/export const HIDDEN_AGENT_SENTINEL = '\.hidden-from-dashboard'/)
   })

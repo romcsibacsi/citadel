@@ -60,7 +60,7 @@ export function specialKeyArgs(session: string, name: string): string[] | null {
   return ['send-keys', '-t', session, ...keys]
 }
 
-// The scripted /login flow, split into the two phases Szabi described
+// The scripted /login flow, split into the two phases the operator described
 // (2026-06-03): 'start' opens the login picker and selects the subscription
 // option (which triggers the browser OAuth window / prints the URL); the user
 // then authorises in the browser; 'confirm' sends the trailing Enters that

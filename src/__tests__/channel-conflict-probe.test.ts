@@ -1,4 +1,4 @@
-// Unit tests for the Telegram 409-Conflict diagnostic probe added per Szabi's
+// Unit tests for the Telegram 409-Conflict diagnostic probe added per the operator's
 // 2026-06-01 request. The probe runs ONCE per down-cycle and writes the
 // upstream cause to dashboard.log so an operator can distinguish the orphan
 // poller race from a real network/hardware failure.

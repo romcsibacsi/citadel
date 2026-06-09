@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectReauthNeeded } from '../web/reauth-detect.js'
 
-// Dashboard reauth badge (Szabi 2026-06-03). Must fire on the distinctive
+// Dashboard reauth badge (the operator 2026-06-03). Must fire on the distinctive
 // Claude Code auth-failure strings, and NOT on ordinary chat that merely
 // mentions "/login".
 describe('detectReauthNeeded', () => {

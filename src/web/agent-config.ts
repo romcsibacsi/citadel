@@ -273,7 +273,7 @@ export function writeAgentSecurityProfile(name: string, profileId: string): void
 // schedule runner, in inter-agent message routing, etc.), but is still a
 // real directory on disk for whatever workflow needs it. Used today by
 // agents/heartbeat-worker/, the sentinel cwd for the SDK-spawned hourly
-// heartbeat sub-agent (Szabi 2026-06-02: "ez a technikai agent meg se
+// heartbeat sub-agent (the operator 2026-06-02: "ez a technikai agent meg se
 // jelenjen a dashboardon").
 export const HIDDEN_AGENT_SENTINEL = '.hidden-from-dashboard'
 

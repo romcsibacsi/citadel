@@ -212,14 +212,14 @@ mkdir -p "$INSTALL_DIR/store"
 touch "$INSTALL_DIR/store/.channel-keepalive"
 date +%s > "$INSTALL_DIR/store/.channel-last-respawn"
 
-# POST-INIT PLUGIN UNLOCK (2026-06-01 Szabi 15:24 incident workaround):
+# POST-INIT PLUGIN UNLOCK (2026-06-01 operator-reported incident workaround):
 # Claude Code 2.1.159 + telegram-plugin 0.0.6: the `--channels` parameter
 # announces "Listening for channel messages from: plugin:telegram@..." in the
 # TUI, but the plugin server itself is NOT always spawned on fresh-session
 # init - it lands in /mcp's Failed state with no bun-poller child. Manually
 # opening /mcp, moving the cursor up to the failed plugin row, and pressing
 # Enter twice (enter submenu, press Reconnect) brings the plugin live -
-# Szabi's empirical sequence that fixed the 16:31 hard-restart aftermath.
+# the operator's empirical sequence that fixed the 16:31 hard-restart aftermath.
 #
 # Two-stage detection, both must indicate "no plugin" before we fire keystrokes:
 #
@@ -233,7 +233,7 @@ date +%s > "$INSTALL_DIR/store/.channel-last-respawn"
 #   2. capture-pane after `/mcp` shows the plugin row marked with "✗ Failed".
 #      Connected/Enabled rows must NOT trigger the keystroke sequence, because
 #      then `Up`+`Enter`+`Enter` would land on "Disable" in the submenu and
-#      disable the plugin instead of reconnecting it (Szabi msg 427).
+#      disable the plugin instead of reconnecting it (operator msg 427).
 #
 # We sequence both checks, log the decision, and fire only when both agree.
 # The subshell is detached so the main script keeps moving to the wait-loop.

@@ -181,7 +181,7 @@ function ensureHeartbeatWorkerCwd(): void {
     // 2026-06-02 14:00 hb-fire ran with an empty .claude.json (Claude
     // Code generated a fresh one in CLAUDE_CONFIG_DIR), so the sub-agent
     // saw zero user-level MCPs -- Gmail OAuth lost, Calendar fell back to
-    // the wrong default account (Szabi 14:27 report).
+    // the wrong default account (the operator 14:27 report).
     //
     // Copy the real ~/.claude.json into the isolated config dir AND
     // duplicate the `projects[PROJECT_ROOT]` entry under
@@ -209,7 +209,7 @@ function ensureHeartbeatWorkerCwd(): void {
       logger.warn({ err }, 'Heartbeat: failed to materialise .claude.json into isolated config dir (sub-agent will lack project MCPs)')
     }
 
-    // Dashboard-hide sentinel: Szabi 2026-06-02 asked that this technical
+    // Dashboard-hide sentinel: the operator 2026-06-02 asked that this technical
     // worker NOT show up as a real agent on the dashboard. listAgentNames()
     // filters out any subdir of agents/ that contains this sentinel file.
     const sentinelPath = join(HEARTBEAT_AGENT_CWD, '.hidden-from-dashboard')

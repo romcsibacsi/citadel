@@ -1,6 +1,6 @@
 // nexus-channel-coordinator: standalone Telegram inbound BACKFILL poller.
 //
-// WHY THIS EXISTS (hybrid model -- Szabi 2026-06-02)
+// WHY THIS EXISTS (hybrid model -- the operator 2026-06-02)
 // The native Telegram channel plugin runs getUpdates INSIDE the Nexus TUI and
 // stays the PRIMARY inbound path (it gives the "typing..." indicator, low
 // latency, and native reply-semantics for free). But the plugin's ~hourly

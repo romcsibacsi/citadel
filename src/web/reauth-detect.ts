@@ -1,6 +1,6 @@
 // Detect whether a Claude Code agent session needs re-authentication (/login).
 //
-// Szabi 2026-06-03: surface a "reauth needed" badge on the dashboard agent
+// the operator 2026-06-03: surface a "reauth needed" badge on the dashboard agent
 // card so an expired login (which silently stops the agent from working) is
 // visible at a glance, with a one-click /login button next to it.
 //

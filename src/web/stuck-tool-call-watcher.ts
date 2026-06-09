@@ -7,7 +7,7 @@
 //   IO-wait. The bun channel-plugin poller is still alive, so #240's
 //   bun-alive short-circuit hides the freeze from the main recovery cascade --
 //   stage 1-4 never fires. Inbound traffic is read by bun and delivered into
-//   the prompt buffer, but the TUI can never act on it: Szabi sees "Nexus
+//   the prompt buffer, but the TUI can never act on it: the operator sees "Nexus
 //   válaszol, de a válasz nem jön meg Telegramra".
 //
 // Detection: parse the TUI's "<verb> for Ns" progress line; if the same

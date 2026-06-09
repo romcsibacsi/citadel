@@ -570,7 +570,7 @@ function checkMainKeepaliveStaleness(): void {
   // plugin's bun poller is ALIVE under Nexus's claude pid, the channel
   // is healthy by definition -- Telegram traffic CAN reach us. A stale
   // keepalive file with a live poller is just a quiet conversation, NOT
-  // deafness. Respawning here would kill the session for nothing (Szabi
+  // deafness. Respawning here would kill the session for nothing (the operator
   // got "channel keep-alive 18 perce nem frissült" alerts every 30 min
   // during idle periods, each one losing the running --continue context).
   // The bun-child check is the same liveness signal channel-plugin-unlock

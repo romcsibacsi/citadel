@@ -25,14 +25,13 @@ export type Privilege = number
 
 // Privilege ranking of security profiles. Higher = more powerful.
 //   0 = sandbox (internal sub-agents, junior dev) — auto-spawnable
-//   1 = draft/read-only (researcher, marketer, data-analyst)
+//   1 = draft/read-only (researcher, data-analyst)
 //   2 = trusted build (developer-senior)            — the hard ceiling for spawns
 //   3 = full host control (homelab-full)            — base roster ONLY, never spawned
 export const PROFILE_PRIVILEGE: Record<string, Privilege> = {
   internal: 0,
   'developer-junior': 0,
   researcher: 1,
-  marketer: 1,
   'data-analyst': 1,
   default: 1,
   'developer-senior': 2,

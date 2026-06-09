@@ -6,7 +6,7 @@ const MONITOR_PATH = join(__dirname, '../web/channel-monitor.ts')
 const src = readFileSync(MONITOR_PATH, 'utf-8')
 
 describe('checkMainKeepaliveStaleness: bun-alive short-circuit (2026-06-01 21:18 incident)', () => {
-  // Szabi reported: "óra :18 és :48 kor folyton" stale-keepalive alerts during
+  // the operator reported: "óra :18 és :48 kor folyton" stale-keepalive alerts during
   // quiet conversation periods. Each alert triggered a respawn-pane that
   // killed the running --continue context for nothing -- the plugin was
   // perfectly alive, the file just hadn't been touched in 18+ min because

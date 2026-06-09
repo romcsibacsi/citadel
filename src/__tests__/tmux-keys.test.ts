@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSpecialKey, literalKeyArgs, specialKeyArgs, loginSequence } from '../web/tmux-keys.js'
 
-// Web-terminal keystroke mapping (Szabi 2026-06-03). The allow-list is the
+// Web-terminal keystroke mapping (the operator 2026-06-03). The allow-list is the
 // security boundary: only recognised special keys may be injected.
 describe('resolveSpecialKey', () => {
   it('maps known keys', () => {
