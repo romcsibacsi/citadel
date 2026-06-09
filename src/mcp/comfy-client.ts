@@ -20,11 +20,19 @@ export function comfyBaseUrl(): string {
   return raw.replace(/\/+$/, '')
 }
 
+// Per-request timeout so a hung-but-accepted socket (the documented RTX 5090
+// bus-drop failure mode: TCP up, no HTTP response) cannot block forever. Kept
+// well under the poll deadline in waitForImages (180s) so a hung fetch aborts
+// -> ComfyError -> the deadline loop fires and rejects, letting the caller (and
+// the studio GPU lock that is tied to the job promise settling) recover.
+// Callers may override by passing their own signal in init.
+const COMFY_REQUEST_TIMEOUT_MS = 60_000
+
 async function comfyFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = `${comfyBaseUrl()}${path}`
   let res: Response
   try {
-    res = await fetch(url, init)
+    res = await fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(COMFY_REQUEST_TIMEOUT_MS) })
   } catch (err) {
     throw new ComfyError(`ComfyUI nem elérhető (${url}): ${err instanceof Error ? err.message : String(err)}`)
   }

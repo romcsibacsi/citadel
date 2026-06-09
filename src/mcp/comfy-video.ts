@@ -74,11 +74,17 @@ function buildWanWorkflow(
 
 // Upload a local image into ComfyUI's input dir (for image->video). Returns the
 // stored filename to reference from a LoadImage node.
+// Per-request timeout so a hung-but-accepted socket (RTX 5090 bus-drop: TCP up,
+// no HTTP response) cannot block forever. Kept under waitForVideoOutput's poll
+// deadline so a hung fetch aborts and the deadline loop can reject -> the studio
+// GPU lock (tied to the job promise settling) recovers instead of wedging.
+const COMFY_REQUEST_TIMEOUT_MS = 60_000
+
 async function uploadComfyImage(bytes: Buffer, name: string): Promise<string> {
   const form = new FormData()
   form.append('image', new Blob([new Uint8Array(bytes)]), name)
   form.append('overwrite', 'true')
-  const res = await fetch(`${comfyBaseUrl()}/upload/image`, { method: 'POST', body: form })
+  const res = await fetch(`${comfyBaseUrl()}/upload/image`, { method: 'POST', body: form, signal: AbortSignal.timeout(COMFY_REQUEST_TIMEOUT_MS) })
   if (!res.ok) throw new ComfyError(`ComfyUI /upload/image -> ${res.status}`)
   const data = await res.json() as { name?: string; subfolder?: string }
   if (!data.name) throw new ComfyError('ComfyUI /upload/image válaszában nincs name')
@@ -96,7 +102,7 @@ async function waitForVideoOutput(
   const sleep = opts.sleep ?? ((ms: number) => new Promise(r => setTimeout(r, ms)))
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const res = await fetch(`${comfyBaseUrl()}/history/${encodeURIComponent(promptId)}`)
+    const res = await fetch(`${comfyBaseUrl()}/history/${encodeURIComponent(promptId)}`, { signal: AbortSignal.timeout(COMFY_REQUEST_TIMEOUT_MS) })
     if (res.ok) {
       const hist = await res.json() as Record<string, any>
       const entry = hist[promptId]
@@ -122,7 +128,7 @@ async function waitForVideoOutput(
 
 async function fetchOutput(ref: ComfyImageRef): Promise<Buffer> {
   const qs = new URLSearchParams({ filename: ref.filename, subfolder: ref.subfolder, type: ref.type })
-  const res = await fetch(`${comfyBaseUrl()}/view?${qs.toString()}`)
+  const res = await fetch(`${comfyBaseUrl()}/view?${qs.toString()}`, { signal: AbortSignal.timeout(COMFY_REQUEST_TIMEOUT_MS) })
   if (!res.ok) throw new ComfyError(`ComfyUI /view -> ${res.status} (${ref.filename})`)
   return Buffer.from(await res.arrayBuffer())
 }

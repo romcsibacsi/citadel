@@ -11,9 +11,14 @@ import { comfyStatus, ComfyError } from './comfy-client.js'
 // card off the bus. Best-effort: failures are ignored. Returns true if it
 // evicted anything. Every generate* path calls this first.
 export async function freeOllamaVram(): Promise<boolean> {
+  // Per-request timeouts so a hung ollama host (same wedge class as the ComfyUI
+  // fetches) cannot stall this BEFORE the studio loop's ollamaChat timeout and
+  // hang the GPU lock. Best-effort: any failure just returns false and the gen
+  // proceeds.
+  const EVICT_TIMEOUT_MS = 30_000
   try {
     const base = OLLAMA_URL.replace(/\/+$/, '')
-    const res = await fetch(`${base}/api/ps`)
+    const res = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(EVICT_TIMEOUT_MS) })
     if (!res.ok) return false
     const data = await res.json() as { models?: Array<{ name?: string }> }
     const names = (data.models || []).map(m => m.name).filter((n): n is string => !!n)
@@ -21,6 +26,7 @@ export async function freeOllamaVram(): Promise<boolean> {
       await fetch(`${base}/api/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: name, keep_alive: 0 }),
+        signal: AbortSignal.timeout(EVICT_TIMEOUT_MS),
       }).catch(() => {})
     }
     return names.length > 0

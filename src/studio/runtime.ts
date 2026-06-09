@@ -13,6 +13,13 @@ import { concatVideos, imagesToVideo, trimVideo, extractFrame } from '../mcp/vid
 
 const DEFAULT_MODEL = 'muse-brain:latest'
 
+// Per-chat-turn timeout so a hung/unreachable ollama cannot make a studio job
+// -- and the dispatcher's single-GPU lock that is tied to this promise settling
+// -- hang forever. Generous: it must cover a cold model reload after
+// freeOllamaVram() evicted the brain between tool calls (a 13GB model can take
+// tens of seconds to page back into VRAM).
+const OLLAMA_CHAT_TIMEOUT_MS = 180_000
+
 const SYSTEM = `Te a CITADEL helyi média-stúdiója vagy: szövegből kép és videó, helyi GPU-n.
 A felhasználó kérését a megadott TOOL-okkal teljesíted. FONTOS szabályok:
 - Mindig HÍVD a megfelelő tool-t (ne csak beszélj róla, ne kérdezz vissza feleslegesen).
@@ -103,6 +110,7 @@ async function ollamaChat(model: string, messages: ChatMsg[]): Promise<ChatMsg> 
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, messages, tools: TOOLS, stream: false }),
+    signal: AbortSignal.timeout(OLLAMA_CHAT_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`ollama /api/chat -> ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`)
   const data = await res.json() as { message?: ChatMsg }

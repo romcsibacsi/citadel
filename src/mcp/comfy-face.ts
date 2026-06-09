@@ -46,11 +46,15 @@ function resolveRef(p: string): string {
   return real
 }
 
+// Per-request timeout so a hung-but-accepted socket (RTX 5090 bus-drop: TCP up,
+// no HTTP response) cannot block forever and wedge the studio GPU lock.
+const COMFY_REQUEST_TIMEOUT_MS = 60_000
+
 async function uploadComfyImage(bytes: Buffer, name: string): Promise<string> {
   const form = new FormData()
   form.append('image', new Blob([new Uint8Array(bytes)]), name)
   form.append('overwrite', 'true')
-  const res = await fetch(`${comfyBaseUrl()}/upload/image`, { method: 'POST', body: form })
+  const res = await fetch(`${comfyBaseUrl()}/upload/image`, { method: 'POST', body: form, signal: AbortSignal.timeout(COMFY_REQUEST_TIMEOUT_MS) })
   if (!res.ok) throw new ComfyError(`ComfyUI /upload/image -> ${res.status}`)
   const data = await res.json() as { name?: string; subfolder?: string }
   if (!data.name) throw new ComfyError('ComfyUI /upload/image válaszában nincs name')

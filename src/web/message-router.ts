@@ -28,6 +28,7 @@ import {
   sendPromptToSession,
 } from './agent-process.js'
 import { MAIN_CHANNELS_SESSION } from './main-agent.js'
+import { studioRouteDecision, dispatchStudioMessage } from './studio-dispatch.js'
 
 const TMUX = resolveFromPath('tmux')
 
@@ -93,6 +94,32 @@ export function startMessageRouter(): NodeJS.Timeout {
         routerLoggedMisses.delete(msg.id)
         continue
       }
+
+      // Studio-backed identities (MUSE/REEL): handled by the thin Studio
+      // runtime (ollama native tool-calling, uncensored muse-brain), NOT a
+      // flaky local-model Claude-Code tmux agent that wanders instead of
+      // calling the gen tools. Intercept BEFORE the tmux session lookup so a
+      // stale agent-muse/agent-reel session never receives the message.
+      const studioRoute = studioRouteDecision(msg.from_agent, msg.to_agent)
+      if (studioRoute === 'consume') {
+        // studio -> studio (a reply mis-addressed to a studio id, or a forged
+        // from=reel,to=muse via the public POST): consume without generating so
+        // the row leaves the pending queue and cannot re-enter this intercept
+        // and burn one GPU render per tick forever.
+        if (!markMessageDelivered(msg.id)) {
+          logger.warn({ id: msg.id, from: msg.from_agent, to: msg.to_agent }, 'studio loop-breaker: markMessageDelivered affected 0 rows')
+        }
+        routerLoggedMisses.delete(msg.id)
+        continue
+      }
+      if (studioRoute === 'dispatch') {
+        // Non-blocking + idempotent across ticks; creates the reply async and
+        // marks this message delivered/failed when the job settles.
+        dispatchStudioMessage(msg)
+        routerLoggedMisses.delete(msg.id)
+        continue
+      }
+      // studioRoute === 'pass' -> fall through to normal tmux delivery below.
 
       // The main agent runs in `${MAIN_AGENT_ID}-channels`, not `agent-${name}`,
       // so agentSessionName() would miss it and strand every sub-agent → main
