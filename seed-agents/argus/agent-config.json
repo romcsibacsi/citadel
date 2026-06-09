@@ -1,0 +1,13 @@
+{
+  "displayName": "ARGUS",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "media",
+  "accent": "#f59e0b",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}

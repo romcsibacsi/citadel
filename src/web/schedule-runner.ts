@@ -399,7 +399,11 @@ export function startScheduleRunner(): NodeJS.Timeout {
         // async signal collection + an optional Ollama call) -- it owns
         // the attemptFireTask call internally. The gate never blocks the
         // tick and never throws into the loop.
-        if (HEARTBEAT_TRIAGE_ENABLED && task.type === 'heartbeat') {
+        // bypassTriage opts a heartbeat OUT of the gate: it still fires through
+        // attemptFireTask below (keeping the silent heartbeat prefix + keep-alive)
+        // but on every tick, regardless of signal -- for consolidation heartbeats
+        // (memory/skill) that must run even on quiet days.
+        if (HEARTBEAT_TRIAGE_ENABLED && task.type === 'heartbeat' && !task.bypassTriage) {
           void fireHeartbeatWithTriage(task, agentName, now).catch((err) =>
             logger.error({ err, task: task.name }, 'Heartbeat triage gate rejected unexpectedly'),
           )

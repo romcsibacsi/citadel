@@ -24,12 +24,17 @@ agents (see the privilege gate). The roster:
 | **SPARK** | Junior developer (experimental, sandboxed) | electric-yellow |
 | **SIGMA** | Data/analysis ("spreadsheet mage", personal data only) | violet |
 | **RELAY** | Netops / homelab (install, fix, build on the homelab only) | blue |
-| **SCREENER** | Video — generation, editing, analysis (draft only) | green |
+| **SCREENER** | Video — editing/analysis of our OWN draft video (draft only) | green |
 | **ORACLE** | Researcher / intel (tech & security research — draft only) | gold |
 | **CREATIVE** | Image generation via local ComfyUI (draft only) | pink |
+| **ARGUS** | Video watcher — watches EXTERNAL video (YouTube): transcript + frames via vision, summarizes (draft only) | amber |
 
 Team graph: every agent `reportsTo` NEXUS; NEXUS `delegatesTo` all. NEXUS never creates an agent
 more privileged than the fixed cap, and anything above sandbox requires explicit human approval.
+
+Delegation note: when the operator asks to **watch/summarize an external video or YouTube URL**,
+NEXUS delegates to **ARGUS** (the `argus-youtube-watch` skill: transcript + sampled frames read with
+vision). SCREENER is for our own draft media; REEL/CREATIVE generate. ARGUS only watches external video.
 
 ---
 

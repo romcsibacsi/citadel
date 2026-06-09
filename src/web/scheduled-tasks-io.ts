@@ -40,6 +40,12 @@ export interface ScheduledTask {
   // `agent-<name>` or MAIN_CHANNELS_SESSION. Enables dedicated
   // scheduler-only sessions in the future.
   targetSession?: string
+  // When true, a 'heartbeat'-type task SKIPS the cheap triage gate (which
+  // otherwise drops the tick when no on-server signal scores) and fires on
+  // every scheduled tick -- while KEEPING type='heartbeat', so it still gets
+  // the silent prefix + the Telegram keep-alive. Use for consolidation
+  // heartbeats (memory/skill) that must run regardless of external signal.
+  bypassTriage?: boolean
 }
 
 function readFileOr(path: string, fallback: string): string {
@@ -69,7 +75,7 @@ export function readScheduledTask(taskName: string): ScheduledTask | null {
   const skillContent = readFileOr(skillPath, '')
   const { name, description, body } = parseSkillMdFrontmatter(skillContent)
 
-  let config: { schedule?: string; agent?: string; enabled?: boolean; createdAt?: number; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string } = {}
+  let config: { schedule?: string; agent?: string; enabled?: boolean; createdAt?: number; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string; bypassTriage?: boolean } = {}
   try {
     config = JSON.parse(readFileOr(configPath, '{}'))
   } catch { /* use defaults */ }
@@ -86,6 +92,7 @@ export function readScheduledTask(taskName: string): ScheduledTask | null {
     skipIfBusy: config.skipIfBusy === true,
     forceSend: config.forceSend === true,
     targetSession: config.targetSession || undefined,
+    bypassTriage: config.bypassTriage === true,
   }
 }
 
@@ -104,7 +111,7 @@ export function listScheduledTasks(): ScheduledTask[] {
 
 export function writeScheduledTask(
   taskName: string,
-  data: { description?: string; prompt?: string; schedule?: string; agent?: string; enabled?: boolean; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string },
+  data: { description?: string; prompt?: string; schedule?: string; agent?: string; enabled?: boolean; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string; bypassTriage?: boolean },
 ): void {
   const dir = join(SCHEDULED_TASKS_DIR, taskName)
   mkdirSync(dir, { recursive: true })
@@ -131,6 +138,7 @@ export function writeScheduledTask(
   if (data.skipIfBusy !== undefined) config.skipIfBusy = data.skipIfBusy
   if (data.forceSend !== undefined) config.forceSend = data.forceSend
   if (data.targetSession !== undefined) config.targetSession = data.targetSession
+  if (data.bypassTriage !== undefined) config.bypassTriage = data.bypassTriage
   if (!config.createdAt) config.createdAt = Math.floor(Date.now() / 1000)
   atomicWriteFileSync(configPath, JSON.stringify(config, null, 2))
 }

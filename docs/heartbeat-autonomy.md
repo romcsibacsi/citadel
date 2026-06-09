@@ -66,3 +66,21 @@ A default config a `seed-config/` mappában van; az install kimásolja `store/`-
 ### Bővítés
 
 Új autonómia-kategória: vedd fel a `seed-config/autonomy-config.json`-ba (`key`, `label`, `level`, `locked`, `maxLevel`), és a releváns heartbeat-prompt olvassa be a szintet a cselekvés előtt. A hard-safety határt mindig tartsd: kifelé menő / visszafordíthatatlan művelet sosem kap `maxLevel > 1`-et (az email a kivétel, `maxLevel: 2`).
+
+## Triage-megkerülés: `bypassTriage` (memória/skill konszolidáció)
+
+A `heartbeat` típusú feladatok alapból a triage-kapun mennek át: csak akkor ébresztik fel az ügynököt, ha valamelyik olcsó jel (kanban-nyomás, közelgő naptár-esemény, lejárt retry) pontoz. Ez helyes a felszínre-hozó heartbeatnél (pl. kanban-audit), DE a **memória/skill konszolidációnak csendes napokon IS futnia kell** — különben a memória sosem nő (ez volt a tünet: 3 emlék, üresen álló memória).
+
+Erre van a `bypassTriage` flag a task `task-config.json`-jában:
+
+```json
+{ "type": "heartbeat", "skipIfBusy": true, "bypassTriage": true }
+```
+
+- `bypassTriage: true` → a feladat **kihagyja a triage-kaput**, és minden ütemezett tickben lefut a szokásos `attemptFireTask`-on át.
+- `type` **marad** `heartbeat` → megtartja a **csendes prefixet** (nem spamel a csatornára) és a Telegram **keep-alive** tool-hívást. Ezért NE válts `type: "task"`-ra: az minden tickben a live csatornára íratná az eredményt.
+- `skipIfBusy: true`-val párban: ha az ügynök épp beszélget, a tick csendben elmarad (nem szakítja félbe), a következő idle tickben fut.
+
+Jelenleg a `memoria-heartbeat` (`*/15`) használja: a SKILL.md-je csendes-szabállyal ír memóriát (és reflexióból skillt), csatornára csak közvetlen operátor-üzenetnél szól.
+
+Implementáció: `src/web/scheduled-tasks-io.ts` (a flag olvasása + round-trip írása) és `src/web/schedule-runner.ts` (a kapu feltétele: `task.type === 'heartbeat' && !task.bypassTriage`).
