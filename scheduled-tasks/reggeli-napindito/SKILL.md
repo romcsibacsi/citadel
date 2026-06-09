@@ -15,9 +15,10 @@ cat /home/uplinkfather/CITADEL/citadel/store/DREAM.md 2>/dev/null || echo "(ninc
 
 Emeld ki: `🧠 A csapat tegnapi munkája`, `💡 Skill-/folyamat-javaslatok`, `🎯 Holnapi top-3`, `🌐 Külső lehetőség`, `🛠 Skill-flotta egészség`. Ha a DREAM.md nem létezik vagy üres (a Dream Engine nem futott), **hagyd ki ezt a szekciót** és jelezd egy sorban: „(Dream Engine éjjel nem futott le.)".
 
-## 2. Email / naptár / AI hírek (csak ha elérhető, csak NEXUS-nál)
+## 2. Naptár / email / AI hírek (csak ha elérhető, csak NEXUS-nál)
 
-- **Email + naptár**: csak ha a megfelelő integráció ténylegesen konfigurálva van. Ha egy fetch hibára fut vagy nincs beállítva, **csendben hagyd ki** az adott szekciót — ne írj hibát a napindítóba.
+- **📅 Naptár (ma)**: futtasd `node scripts/calendar-today.mjs` — a beállított Google-naptár mai, hátralévő eseményeit adja vissza (read-only, magát frissíti). Ha ad sorokat, tedd be egy „📅 Naptár" szekcióba; ha üres vagy hibára fut, **csendben hagyd ki**.
+- **Email**: jelenleg nincs bekötve — hagyd ki. (Ha később lesz Gmail-integráció, ide kerül.)
 - **🤖 AI hírek**: CSAK a fő-ágensként (NEXUS). Ha valamiért sub-agentként futnál, hagyd ki.
 
 ## 3. Formátum és csatorna
