@@ -102,7 +102,7 @@ function describeSettings(st: StudioSettings): string {
 
 type ToolArgs = Record<string, unknown>
 
-async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSettings): Promise<string> {
+async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSettings, onProgress?: (msg: string) => void): Promise<string> {
   const s = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : undefined)
   const n = (k: string) => (typeof a[k] === 'number' ? (a[k] as number) : undefined)
   const arr = (k: string) => (Array.isArray(a[k]) ? (a[k] as unknown[]).map(String) : [])
@@ -132,6 +132,7 @@ async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSet
         prompt: s('prompt') || '', negative: st.negative ?? s('negative'),
         seconds: st.seconds ?? n('seconds'), frames: st.frames ?? n('frames'),
         width: st.width, height: st.height, steps: st.steps, cfg: st.cfg, seed: st.seed ?? n('seed'),
+        onProgress,
       })
       files.push(r.savedPath)
       return `Videó kész: ${r.savedPath} — ${r.frames} kocka @ ${r.fps}fps ≈ ${r.durationSec}s, ${r.width}×${r.height}, ${r.steps} steps, ${r.mode}, seed ${r.seed}`
@@ -141,6 +142,7 @@ async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSet
         prompt: s('prompt') || '', imagePath: s('image_path'),
         seconds: st.seconds ?? n('seconds'), frames: st.frames ?? n('frames'),
         width: st.width, height: st.height, steps: st.steps, seed: st.seed,
+        onProgress,
       })
       files.push(r.savedPath)
       return `Animált videó kész: ${r.savedPath} — ${r.frames} kocka @ ${r.fps}fps ≈ ${r.durationSec}s, ${r.width}×${r.height}, ${r.mode}, seed ${r.seed}`
@@ -168,6 +170,10 @@ const GEN_TOOLS = new Set(['generate_image', 'generate_image_with_face', 'genera
 // request was the cause of the runaway queue of degenerate gens. Shared by both
 // the /api/studio/run path and the dispatcher (both call runStudio).
 let studioRunning = false
+// True while ANY studio gen holds the GPU (HTTP job or agent-message dispatch).
+// The async /api/studio/run route checks this to reject a second job up front with
+// a clear message instead of letting runStudio throw mid-flight.
+export function isStudioBusy(): boolean { return studioRunning }
 function toolsForMode(mode?: 'image' | 'video'): typeof TOOLS {
   if (mode === 'image') return TOOLS.filter(t => IMAGE_TOOL_NAMES.has(t.function.name))
   if (mode === 'video') return TOOLS.filter(t => VIDEO_TOOL_NAMES.has(t.function.name))
@@ -213,12 +219,16 @@ async function ollamaChat(model: string, messages: ChatMsg[], tools: unknown[]):
 }
 
 // Run the studio loop for one request. maxRounds bounds the tool back-and-forth.
-export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings; mode?: 'image' | 'video' } = {}): Promise<StudioResult> {
+export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings; mode?: 'image' | 'video'; onProgress?: (msg: string) => void } = {}): Promise<StudioResult> {
   const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
-  await preflightOllama(model) // clear, actionable error if ollama/model is unreachable
+  // Take the single-GPU lock BEFORE any await: the check+set is synchronous at
+  // function entry, so two callers (a UI POST job + an agent-message dispatch)
+  // can't both pass during the ~8s preflight and drive two concurrent gens on the
+  // GPU. Released in the finally below (covers a preflight throw too).
   if (studioRunning) throw new Error('Már fut egy stúdió-generálás — a GPU-n egyszerre egy mehet. Várd meg, amíg az befejeződik, aztán indítsd újra.')
   studioRunning = true
   try {
+    await preflightOllama(model) // clear, actionable error if ollama/model is unreachable
     const maxRounds = opts.maxRounds ?? 10
     const settings = opts.settings ?? {}
     // Explicit Kép/Videó mode from the UI restricts the offered tools so the model
@@ -237,6 +247,7 @@ export async function runStudio(request: string, opts: { model?: string; maxRoun
     const MAX_GENS = 5 // bound a runaway loop where the model keeps re-calling a gen tool
 
     for (let round = 0; round < maxRounds; round++) {
+      opts.onProgress?.('a modell tervez…')
       const msg = await ollamaChat(model, messages, tools)
       messages.push(msg)
       const calls = msg.tool_calls || []
@@ -245,8 +256,9 @@ export async function runStudio(request: string, opts: { model?: string; maxRoun
         return { reply: msg.content || '(nincs szöveges válasz)', files, log }
       }
       for (const c of calls) {
+        opts.onProgress?.(`${c.function.name}…`)
         let result: string
-        try { result = await runTool(c.function.name, c.function.arguments || {}, files, settings) }
+        try { result = await runTool(c.function.name, c.function.arguments || {}, files, settings, opts.onProgress) }
         catch (e) { result = `HIBA (${c.function.name}): ${e instanceof Error ? e.message : String(e)}` }
         log.push({ role: 'tool', text: `${c.function.name} → ${result}` })
         messages.push({ role: 'tool', content: result })

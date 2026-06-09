@@ -10114,6 +10114,33 @@ function studioFileRef(abs) {
   return { root: m[1] === 'comfy-video' ? 'comfyvideo' : 'comfy', rel: m[2] }
 }
 
+// Render a finished job's reply files (images/videos) + tool log.
+function renderStudioResult(d, results, logEl) {
+  for (const f of (d.files || [])) {
+    const ref = studioFileRef(f)
+    if (!ref) continue
+    const url = filesRawUrl(ref.root, ref.rel, false)
+    if (/\.(png|jpg|jpeg|webp|gif)$/i.test(f)) {
+      const img = document.createElement('img')
+      img.className = 'studio-thumb'; img.loading = 'lazy'; img.src = url; img.style.cursor = 'zoom-in'
+      img.addEventListener('click', () => openFilesLightbox(ref.root, ref.rel, ref.rel))
+      results.appendChild(img)
+    } else if (/\.(mp4|webm)$/i.test(f)) {
+      const v = document.createElement('video')
+      v.className = 'studio-thumb'; v.src = url; v.controls = true; v.loop = true
+      results.appendChild(v)
+    }
+  }
+  for (const l of (d.log || [])) {
+    const div = document.createElement('div'); div.className = 'studio-log-line'; div.textContent = l.text
+    logEl.appendChild(div)
+  }
+}
+
+// Studio is ASYNC: POST starts a background job (returns a jobId immediately, so a
+// minutes-long 60s/8-clip video never trips the proxy/browser read-timeout), then
+// we poll the job for progress + result. Each poll is a quick request, and the job
+// lives server-side, so a transient poll failure is tolerated (keep retrying).
 async function runStudioRequest() {
   const reqEl = document.getElementById('studioRequest')
   const req = (reqEl?.value || '').trim()
@@ -10124,7 +10151,7 @@ async function runStudioRequest() {
   const logEl = document.getElementById('studioLog')
   btn.disabled = true
   status.hidden = false
-  status.textContent = 'Dolgozom… a generálás percekig tarthat (a felület megvárja).'
+  status.textContent = 'Indítás…'
   results.innerHTML = ''
   logEl.innerHTML = ''
   try {
@@ -10132,30 +10159,49 @@ async function runStudioRequest() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request: req, settings: studioSettings, mode: studioMode }),
     })
-    const d = await res.json().catch(() => ({}))
-    if (d.error) { status.textContent = 'Hiba: ' + d.error; return }
-    status.textContent = d.reply || 'Kész.'
-    for (const f of (d.files || [])) {
-      const ref = studioFileRef(f)
-      if (!ref) continue
-      const url = filesRawUrl(ref.root, ref.rel, false)
-      if (/\.(png|jpg|jpeg|webp|gif)$/i.test(f)) {
-        const img = document.createElement('img')
-        img.className = 'studio-thumb'; img.loading = 'lazy'; img.src = url; img.style.cursor = 'zoom-in'
-        img.addEventListener('click', () => openFilesLightbox(ref.root, ref.rel, ref.rel))
-        results.appendChild(img)
-      } else if (/\.(mp4|webm)$/i.test(f)) {
-        const v = document.createElement('video')
-        v.className = 'studio-thumb'; v.src = url; v.controls = true; v.loop = true
-        results.appendChild(v)
-      }
+    const start = await res.json().catch(() => ({}))
+    if (!res.ok || start.error || !start.jobId) {
+      status.textContent = 'Hiba: ' + (start.error || ('HTTP ' + res.status))
+      return
     }
-    for (const l of (d.log || [])) {
-      const div = document.createElement('div'); div.className = 'studio-log-line'; div.textContent = l.text
-      logEl.appendChild(div)
+    const jobId = start.jobId
+    const t0 = Date.now()
+    let misses = 0
+    for (;;) {
+      await new Promise(r => setTimeout(r, 2500))
+      let j = null
+      try {
+        const r = await fetch('/api/studio/job?id=' + encodeURIComponent(jobId))
+        if (r.status === 404) {
+          status.textContent = 'A háttérfolyamat megszakadt vagy a szerver újraindult — nézd meg a Fájlok oldalt.'
+          return
+        }
+        // A 5xx / proxy error (502/504) resolves the fetch (no throw); treat it as
+        // a transient miss, not a usable response, so it can't loop forever.
+        if (!r.ok) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return } continue }
+        j = await r.json().catch(() => null)
+      } catch {
+        if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
+        continue
+      }
+      if (!j) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — nézd meg a Fájlok oldalt.'; return } continue }
+      misses = 0 // only reset after a genuinely usable, parsed response
+      const secs = Math.round((Date.now() - t0) / 1000)
+      if (j.status === 'running') {
+        // Wall-clock cap: a hung job (e.g. the 5090 dropping off the bus mid-render)
+        // must not spin the UI forever with the button disabled. Comfortably above
+        // the worst-case 60s/8-clip render.
+        if (secs > 45 * 60) { status.textContent = 'Túl sokáig fut — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
+        status.textContent = `Dolgozom… ${j.progress || ''} (${secs}s)`
+        continue
+      }
+      if (j.status === 'error') { status.textContent = 'Hiba: ' + (j.error || 'ismeretlen'); return }
+      status.textContent = j.reply || 'Kész.'
+      renderStudioResult(j, results, logEl)
+      return
     }
   } catch {
-    status.textContent = 'Hiba a Stúdió-kérés során (hálózat?).'
+    status.textContent = 'Hiba a Stúdió-kérés indításakor (hálózat?).'
   } finally {
     btn.disabled = false
   }

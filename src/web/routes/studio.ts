@@ -1,5 +1,7 @@
+import { randomBytes } from 'node:crypto'
 import { json, readBody } from '../http-helpers.js'
-import { runStudio, type StudioSettings } from '../../studio/runtime.js'
+import { logger } from '../../logger.js'
+import { runStudio, isStudioBusy, type StudioSettings, type StudioResult } from '../../studio/runtime.js'
 import type { RouteContext } from './types.js'
 
 // Coerce + clamp the UI-supplied settings object to safe ranges. Anything out of
@@ -24,27 +26,97 @@ function parseSettings(raw: unknown): StudioSettings {
   return st
 }
 
-// POST /api/studio/run -- the thin (Claude-Code-free) media studio: a plain-
-// language request -> the local model autonomously calls the gen/edit tools ->
-// returns {reply, files, log}. Synchronous (gen can take minutes; the caller
-// waits). Auth is the usual dashboard bearer token (all /api/* are gated).
+// --- Async job store ----------------------------------------------------------
+// A studio gen (esp. a 60s / 8-clip video) can take many minutes. A SYNCHRONOUS
+// request would trip the reverse-proxy / browser read-timeout (the "(hálózat?)"
+// failure) even though the backend keeps rendering. So /api/studio/run starts a
+// background job and returns a jobId immediately; the UI polls /api/studio/job.
+// Single-user: at most one job runs at a time (the GPU serializes anyway). Jobs
+// are in-memory -- a dashboard restart loses the job record (a gen in flight may
+// still finish and land in store/comfy-video, visible on the Fájlok page), and
+// finished jobs are pruned after JOB_TTL_MS.
+interface StudioJob {
+  id: string
+  status: 'running' | 'done' | 'error'
+  progress: string
+  startedAt: number
+  finishedAt?: number
+  result?: StudioResult
+  error?: string
+}
+
+const jobs = new Map<string, StudioJob>()
+const JOB_TTL_MS = 60 * 60 * 1000
+
+function pruneJobs(): void {
+  const now = Date.now()
+  for (const [id, j] of jobs) {
+    if (j.finishedAt && now - j.finishedAt > JOB_TTL_MS) jobs.delete(id)
+  }
+}
+
+function startJob(request: string, opts: { model?: string; settings: StudioSettings; mode?: 'image' | 'video' }): StudioJob {
+  const job: StudioJob = { id: randomBytes(8).toString('hex'), status: 'running', progress: 'indítás…', startedAt: Date.now() }
+  jobs.set(job.id, job)
+  // Fire-and-forget: the HTTP response already returned. The promise's settle
+  // captures result/error onto the job; .then's reject arm means it never throws
+  // an unhandled rejection.
+  runStudio(request, {
+    model: opts.model,
+    settings: opts.settings,
+    mode: opts.mode,
+    onProgress: m => { job.progress = m },
+  }).then(
+    r => { job.status = 'done'; job.result = r; job.progress = 'kész'; job.finishedAt = Date.now() },
+    e => {
+      job.status = 'error'
+      job.error = e instanceof Error ? e.message : String(e)
+      job.finishedAt = Date.now()
+      logger.warn({ err: e, jobId: job.id }, 'studio job failed')
+    },
+  )
+  return job
+}
+
+// POST /api/studio/run  -> { jobId, status } (starts a background gen)
+// GET  /api/studio/job?id=<id> -> { status, progress, elapsedMs, ...(reply/files/log | error) }
+// The thin (Claude-Code-free) media studio: a plain-language request -> the local
+// model autonomously calls the gen/edit tools. Auth is the usual dashboard bearer
+// token (all /api/* are gated).
 export async function tryHandleStudio(ctx: RouteContext): Promise<boolean> {
-  const { req, res, path, method } = ctx
+  const { req, res, path, method, url } = ctx
+
   if (path === '/api/studio/run' && method === 'POST') {
     let body: { request?: unknown; model?: unknown; settings?: unknown; mode?: unknown }
     try { body = JSON.parse((await readBody(req, { maxBytes: 64 * 1024 })).toString()) } catch { json(res, { error: 'bad body' }, 400); return true }
     const request = String(body?.request ?? '').trim()
     if (!request) { json(res, { error: 'A request mező kötelező.' }, 400); return true }
+    pruneJobs()
+    // One gen at a time (GPU serializes). Reject a second up front with a clear
+    // message rather than letting runStudio throw mid-flight.
+    if (isStudioBusy() || [...jobs.values()].some(j => j.status === 'running')) {
+      json(res, { error: 'Már fut egy generálás — várd meg, amíg befejeződik.' }, 409); return true
+    }
     const model = typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : undefined
     const settings = parseSettings(body?.settings)
     const mode = body?.mode === 'image' || body?.mode === 'video' ? body.mode : undefined
-    try {
-      const r = await runStudio(request, { model, settings, mode })
-      json(res, r)
-    } catch (err) {
-      json(res, { error: err instanceof Error ? err.message : String(err) }, 500)
-    }
+    const job = startJob(request, { model, settings, mode })
+    json(res, { jobId: job.id, status: job.status })
     return true
   }
+
+  if (path === '/api/studio/job' && method === 'GET') {
+    pruneJobs()
+    const id = url.searchParams.get('id') || ''
+    const job = jobs.get(id)
+    if (!job) { json(res, { error: 'ismeretlen vagy lejárt job' }, 404); return true }
+    const elapsedMs = (job.finishedAt ?? Date.now()) - job.startedAt
+    const base = { status: job.status, progress: job.progress, elapsedMs }
+    if (job.status === 'done' && job.result) json(res, { ...base, ...job.result })
+    else if (job.status === 'error') json(res, { ...base, error: job.error })
+    else json(res, base)
+    return true
+  }
+
   return false
 }

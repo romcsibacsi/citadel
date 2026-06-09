@@ -105,6 +105,7 @@ export interface VideoParams {
   cfg?: number
   seed?: number
   precision?: 'fp8' | 'gguf' // override the VIDEO_MODEL default (for A/B testing fp8 vs Q6)
+  onProgress?: (msg: string) => void // coarse progress for the async studio job UI
 }
 
 export interface VideoResult {
@@ -360,6 +361,7 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
   const wf = is14b ? buildWan14BWorkflow(gp, mode, precision, useLightning, startImageName) : buildWanWorkflow(gp, startImageName)
 
   const clientId = `citadel-${randomBytes(4).toString('hex')}`
+  params.onProgress?.('renderelés a GPU-n…')
   const promptId = await queuePrompt(wf, clientId)
   // 30 min wait: the 14B (esp. accurate/no-Lightning, or a thermally-throttled
   // 5090) can legitimately run several minutes per clip; the old 10 min default
@@ -443,11 +445,14 @@ async function generateLongVideo(params: VideoParams, maxClipSec: number): Promi
   let last: VideoResult | null = null
   let chainImage = params.imagePath // clip 0: supplied start image (i2v) or undefined (t2v)
   for (let i = 0; i < numClips; i++) {
+    params.onProgress?.(`klip ${i + 1}/${numClips} renderelése…`)
     last = await generateVideo({
       ...params,
       seconds: secPerClip,
       imagePath: chainImage,
       seed: params.seed != null ? params.seed + i : undefined,
+      // surface the sub-clip's own progress with the clip counter prefixed
+      onProgress: m => params.onProgress?.(`klip ${i + 1}/${numClips} — ${m}`),
     })
     clips.push(last.savedPath)
     // Seed the NEXT clip with this clip's final frame -> seamless continuation.
