@@ -1,8 +1,9 @@
 {
   "id": "developer-junior",
   "label": "Fejlesztő (junior)",
-  "description": "Feature-fejlesztésre saját branch-en. A main/master-re tiltott push, sudo tiltott, SSH/AWS kulcsok elrejtve. Csak a saját munkakönyvtárába írhat.",
+  "description": "Feature-fejlesztésre saját branch-en. A main/master-re tiltott push, sudo tiltott, SSH/AWS kulcsok elrejtve. Csak a saját munkakönyvtárába írhat. SANDBOX + AUTO-ACCEPT: strict indítás (a deny-lista érvényben marad), de defaultMode=bypassPermissions, így nem kérdez rá semmire — a deny-listán kívül mindent elfogad.",
   "permissionMode": "strict",
+  "defaultMode": "bypassPermissions",
   "filesystem": {
     "allow": [
       "Read(${AGENT_DIR}/**)",

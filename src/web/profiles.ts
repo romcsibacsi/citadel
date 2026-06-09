@@ -13,6 +13,12 @@ export interface ProfileTemplate {
   label: string
   description: string
   permissionMode: 'strict' | 'permissive'
+  // Optional Claude Code permissions.defaultMode written into settings.json. With
+  // permissionMode 'strict' (no --dangerously-skip-permissions), setting this to
+  // 'bypassPermissions' yields a SANDBOXED-but-non-interactive agent: no prompts,
+  // yet the deny list is still enforced (precedence is deny > ask > allow >
+  // defaultMode). Omit for the normal prompt-on-unmatched behavior.
+  defaultMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   filesystem: { allow: string[]; deny: string[] }
 }
 

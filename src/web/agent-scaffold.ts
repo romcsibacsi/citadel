@@ -50,6 +50,9 @@ export function writeAgentSettingsFromProfile(name: string, profile: ProfileTemp
   }
   const ctx = { HOME: homedir(), AGENT_DIR: agentRoot }
   existing.permissions = {
+    // defaultMode 'bypassPermissions' (with a strict, no-skip-flag launch) = no
+    // prompts but deny still enforced -> a sandboxed, non-interactive agent.
+    ...(profile.defaultMode ? { defaultMode: profile.defaultMode } : {}),
     allow: profile.filesystem.allow.map(p => resolveProfilePlaceholders(p, ctx)),
     deny: profile.filesystem.deny.map(p => resolveProfilePlaceholders(p, ctx)),
   }
