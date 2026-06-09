@@ -10137,10 +10137,65 @@ function renderStudioResult(d, results, logEl) {
   }
 }
 
+// Persist the active job id so a page refresh can reattach (the server keeps the
+// job ~1h). Cleared on any terminal state.
+const STUDIO_JOB_KEY = 'studioActiveJob'
+
+// Poll a studio job to completion, rendering live progress + the result. Shared by
+// a fresh run and by resume-on-load; owns the Run-button disabled state. Uses the
+// server's elapsedMs so a resumed job shows true elapsed time. Tolerant of transient
+// poll failures (incl. 5xx/proxy errors); 404 = job gone (server restart / TTL); a
+// 45-min wall-clock cap stops a hung job spinning the UI forever.
+async function attachToStudioJob(jobId) {
+  const btn = document.getElementById('studioRunBtn')
+  const status = document.getElementById('studioStatus')
+  const results = document.getElementById('studioResults')
+  const logEl = document.getElementById('studioLog')
+  if (!status) return
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+  if (btn) btn.disabled = true
+  status.hidden = false
+  let misses = 0
+  try {
+    for (;;) {
+      let j = null
+      try {
+        const r = await fetch('/api/studio/job?id=' + encodeURIComponent(jobId))
+        if (r.status === 404) { status.textContent = 'A háttérfolyamat megszakadt vagy a szerver újraindult — nézd meg a Fájlok oldalt.'; return }
+        // A 5xx / proxy error (502/504) resolves the fetch (no throw); count it as
+        // a transient miss, not a usable response, so it can't loop forever.
+        if (!r.ok) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return } await sleep(2500); continue }
+        j = await r.json().catch(() => null)
+      } catch {
+        if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
+        await sleep(2500); continue
+      }
+      if (!j) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — nézd meg a Fájlok oldalt.'; return } await sleep(2500); continue }
+      misses = 0 // only reset after a genuinely usable, parsed response
+      const secs = Math.round((j.elapsedMs || 0) / 1000)
+      if (j.status === 'running') {
+        // Wall-clock cap: a hung job (e.g. the 5090 dropping off the bus mid-render)
+        // must not spin the UI forever with the button disabled. Comfortably above
+        // the worst-case 60s/8-clip render.
+        if (secs > 45 * 60) { status.textContent = 'Túl sokáig fut — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
+        status.textContent = `Dolgozom… ${j.progress || ''} (${secs}s)`
+        await sleep(2500); continue
+      }
+      if (j.status === 'error') { status.textContent = 'Hiba: ' + (j.error || 'ismeretlen'); return }
+      status.textContent = j.reply || 'Kész.'
+      renderStudioResult(j, results, logEl)
+      return
+    }
+  } finally {
+    try { localStorage.removeItem(STUDIO_JOB_KEY) } catch {}
+    if (btn) btn.disabled = false
+  }
+}
+
 // Studio is ASYNC: POST starts a background job (returns a jobId immediately, so a
 // minutes-long 60s/8-clip video never trips the proxy/browser read-timeout), then
-// we poll the job for progress + result. Each poll is a quick request, and the job
-// lives server-side, so a transient poll failure is tolerated (keep retrying).
+// attachToStudioJob polls for progress + result. The jobId is persisted so a page
+// refresh can reattach (see resumeStudioJob below).
 async function runStudioRequest() {
   const reqEl = document.getElementById('studioRequest')
   const req = (reqEl?.value || '').trim()
@@ -10149,67 +10204,44 @@ async function runStudioRequest() {
   const status = document.getElementById('studioStatus')
   const results = document.getElementById('studioResults')
   const logEl = document.getElementById('studioLog')
-  btn.disabled = true
+  if (btn) btn.disabled = true
   status.hidden = false
   status.textContent = 'Indítás…'
   results.innerHTML = ''
   logEl.innerHTML = ''
+  let jobId = null
   try {
     const res = await fetch('/api/studio/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ request: req, settings: studioSettings, mode: studioMode }),
     })
     const start = await res.json().catch(() => ({}))
-    if (!res.ok || start.error || !start.jobId) {
-      status.textContent = 'Hiba: ' + (start.error || ('HTTP ' + res.status))
-      return
-    }
-    const jobId = start.jobId
-    const t0 = Date.now()
-    let misses = 0
-    for (;;) {
-      await new Promise(r => setTimeout(r, 2500))
-      let j = null
-      try {
-        const r = await fetch('/api/studio/job?id=' + encodeURIComponent(jobId))
-        if (r.status === 404) {
-          status.textContent = 'A háttérfolyamat megszakadt vagy a szerver újraindult — nézd meg a Fájlok oldalt.'
-          return
-        }
-        // A 5xx / proxy error (502/504) resolves the fetch (no throw); treat it as
-        // a transient miss, not a usable response, so it can't loop forever.
-        if (!r.ok) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return } continue }
-        j = await r.json().catch(() => null)
-      } catch {
-        if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
-        continue
-      }
-      if (!j) { if (++misses > 40) { status.textContent = 'A kapcsolat megszakadt — nézd meg a Fájlok oldalt.'; return } continue }
-      misses = 0 // only reset after a genuinely usable, parsed response
-      const secs = Math.round((Date.now() - t0) / 1000)
-      if (j.status === 'running') {
-        // Wall-clock cap: a hung job (e.g. the 5090 dropping off the bus mid-render)
-        // must not spin the UI forever with the button disabled. Comfortably above
-        // the worst-case 60s/8-clip render.
-        if (secs > 45 * 60) { status.textContent = 'Túl sokáig fut — a generálás a háttérben folytatódhat, nézd meg a Fájlok oldalt.'; return }
-        status.textContent = `Dolgozom… ${j.progress || ''} (${secs}s)`
-        continue
-      }
-      if (j.status === 'error') { status.textContent = 'Hiba: ' + (j.error || 'ismeretlen'); return }
-      status.textContent = j.reply || 'Kész.'
-      renderStudioResult(j, results, logEl)
-      return
-    }
+    if (!res.ok || start.error || !start.jobId) { status.textContent = 'Hiba: ' + (start.error || ('HTTP ' + res.status)); return }
+    jobId = start.jobId
+    try { localStorage.setItem(STUDIO_JOB_KEY, jobId) } catch {}
   } catch {
     status.textContent = 'Hiba a Stúdió-kérés indításakor (hálózat?).'
+    return
   } finally {
-    btn.disabled = false
+    if (!jobId && btn) btn.disabled = false // re-enable only if we never started polling
   }
+  if (jobId) await attachToStudioJob(jobId)
 }
 document.getElementById('studioRunBtn')?.addEventListener('click', runStudioRequest)
 document.getElementById('studioRequest')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runStudioRequest() }
 })
+// On page load, reattach to an in-flight job left by a refresh: the server keeps
+// the job ~1h, so resume polling a still-running one (silently drop a stale/finished id).
+;(async function resumeStudioJob() {
+  let saved = null
+  try { saved = localStorage.getItem(STUDIO_JOB_KEY) } catch {}
+  if (!saved) return
+  let j = null
+  try { const r = await fetch('/api/studio/job?id=' + encodeURIComponent(saved)); if (r.ok) j = await r.json().catch(() => null) } catch {}
+  if (j && j.status === 'running') attachToStudioJob(saved)
+  else { try { localStorage.removeItem(STUDIO_JOB_KEY) } catch {} }
+})()
 // Style presets: toggle the style phrase in the request box (visible + editable).
 function syncStudioPresets() {
   const ta = document.getElementById('studioRequest')
