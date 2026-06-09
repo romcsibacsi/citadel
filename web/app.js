@@ -10130,7 +10130,7 @@ async function runStudioRequest() {
   try {
     const res = await fetch('/api/studio/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ request: req }),
+      body: JSON.stringify({ request: req, settings: studioSettings }),
     })
     const d = await res.json().catch(() => ({}))
     if (d.error) { status.textContent = 'Hiba: ' + d.error; return }
@@ -10186,3 +10186,71 @@ document.querySelectorAll('.studio-input-wrap .studio-preset').forEach((btn) => 
 })
 // Keep chip highlights in sync when the box is edited by hand.
 document.getElementById('studioRequest')?.addEventListener('input', syncStudioPresets)
+
+// --- Structured settings (size / quality / duration chips + the modal) ---
+// Unlike the style/motion chips (which inject text into the prompt), these set
+// STRUCTURED params sent as `settings`, which the backend applies as hard
+// overrides over the model's tool args -> precise, deterministic output.
+const studioSettings = {}
+
+function studioSyncSettingChips() {
+  document.querySelectorAll('.studio-input-wrap [data-setting-group]').forEach((group) => {
+    const kind = group.dataset.settingGroup
+    group.querySelectorAll('.studio-preset--setting').forEach((b) => {
+      let active = false
+      if (kind === 'size') active = studioSettings.width === +b.dataset.w && studioSettings.height === +b.dataset.h
+      else if (kind === 'quality') active = studioSettings.steps === +b.dataset.steps
+      else if (kind === 'seconds') active = studioSettings.seconds === +b.dataset.seconds
+      b.classList.toggle('active', active)
+    })
+  })
+}
+document.querySelectorAll('.studio-input-wrap .studio-preset--setting').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const g = btn.closest('[data-setting-group]')?.dataset.settingGroup
+    if (g === 'size') {
+      const w = +btn.dataset.w, h = +btn.dataset.h
+      if (studioSettings.width === w && studioSettings.height === h) { delete studioSettings.width; delete studioSettings.height }
+      else { studioSettings.width = w; studioSettings.height = h }
+    } else if (g === 'quality') {
+      const st = +btn.dataset.steps
+      if (studioSettings.steps === st) delete studioSettings.steps; else studioSettings.steps = st
+    } else if (g === 'seconds') {
+      const sec = +btn.dataset.seconds
+      if (studioSettings.seconds === sec) delete studioSettings.seconds; else studioSettings.seconds = sec
+    }
+    studioSyncSettingChips()
+  })
+})
+
+// Settings modal: fine control that overrides the chips. Empty field = unset.
+function studioOpenSettings() {
+  const m = document.getElementById('studioSettingsModal'); if (!m) return
+  const put = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? '' }
+  put('setWidth', studioSettings.width); put('setHeight', studioSettings.height)
+  put('setSteps', studioSettings.steps); put('setCfg', studioSettings.cfg)
+  put('setSeconds', studioSettings.seconds); put('setSeed', studioSettings.seed)
+  put('setNegative', studioSettings.negative)
+  m.classList.add('active')
+}
+function studioCloseSettings() { document.getElementById('studioSettingsModal')?.classList.remove('active') }
+function studioApplySettings() {
+  const numv = (id) => { const x = (document.getElementById(id)?.value || '').trim(); return x === '' ? undefined : Number(x) }
+  const setNum = (k, val) => { if (val === undefined || Number.isNaN(val)) delete studioSettings[k]; else studioSettings[k] = val }
+  setNum('width', numv('setWidth')); setNum('height', numv('setHeight')); setNum('steps', numv('setSteps'))
+  setNum('cfg', numv('setCfg')); setNum('seconds', numv('setSeconds')); setNum('seed', numv('setSeed'))
+  const neg = (document.getElementById('setNegative')?.value || '').trim()
+  if (neg) studioSettings.negative = neg; else delete studioSettings.negative
+  studioSyncSettingChips()
+  studioCloseSettings()
+}
+function studioResetSettings() {
+  for (const k of Object.keys(studioSettings)) delete studioSettings[k]
+  studioSyncSettingChips()
+  studioCloseSettings()
+}
+document.getElementById('studioSettingsBtn')?.addEventListener('click', studioOpenSettings)
+document.getElementById('studioSettingsApply')?.addEventListener('click', studioApplySettings)
+document.getElementById('studioSettingsReset')?.addEventListener('click', studioResetSettings)
+document.getElementById('studioSettingsClose')?.addEventListener('click', studioCloseSettings)
+document.getElementById('studioSettingsModal')?.addEventListener('click', (e) => { if (e.target.id === 'studioSettingsModal') studioCloseSettings() })

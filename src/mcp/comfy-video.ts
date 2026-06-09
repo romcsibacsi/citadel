@@ -23,6 +23,7 @@ export interface VideoParams {
   imagePath?: string   // local path -> image->video (animate). Empty = text->video.
   width?: number
   height?: number
+  seconds?: number     // requested duration; converted to frames (round(seconds*fps)). Wins over `frames`.
   frames?: number      // latent length; 5B does up to ~121 (≈5s @ 24fps)
   fps?: number
   steps?: number
@@ -37,6 +38,8 @@ export interface VideoResult {
   height: number
   frames: number
   fps: number
+  durationSec: number  // frames / fps, rounded -- the ACTUAL clip length
+  steps: number
   mode: 't2v' | 'i2v'
   woke: boolean
   freedVram: boolean
@@ -158,8 +161,15 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
 
   const width = params.width ?? 1280
   const height = params.height ?? 704
-  const frames = Math.min(Math.max(params.frames ?? 49, 5), 121)
   const fps = params.fps ?? 24
+  // `seconds` (operator-requested duration) wins over `frames`. The Wan VAE
+  // temporal stride is 4, so the latent length MUST be 4n+1 (5, 9, … 45, 49 …);
+  // a non-conforming value (e.g. 48 from 2s×24fps) is silently rounded DOWN by
+  // ComfyUI and the decoded mp4 ends up shorter than requested (observed 48->45).
+  // Snap to the nearest valid 4n+1 so the duration is honored AND the reported
+  // frame count matches the actual output. Clamped to the 5B's 5..121 range.
+  const rawFrames = params.seconds != null ? Math.round(params.seconds * fps) : (params.frames ?? 49)
+  const frames = Math.min(Math.max(Math.round((rawFrames - 1) / 4) * 4 + 1, 5), 121)
   const steps = params.steps ?? 30
   const cfg = params.cfg ?? 5
   const seed = params.seed ?? (randomBytes(4).readUInt32BE(0) % 2_000_000_000)
@@ -182,5 +192,6 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
   const savedPath = join(OUTPUT_DIR, `${stamp}_${mode}${ext}`)
   writeFileSync(savedPath, bytes)
 
-  return { savedPath, seed, width, height, frames, fps, mode, woke: wake.state === 'woke', freedVram }
+  const durationSec = Math.round((frames / fps) * 100) / 100
+  return { savedPath, seed, width, height, frames, fps, durationSec, steps, mode, woke: wake.state === 'woke', freedVram }
 }

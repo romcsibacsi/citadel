@@ -24,8 +24,9 @@ const SYSTEM = `Te a CITADEL helyi média-stúdiója vagy: szövegből kép és 
 A felhasználó kérését a megadott TOOL-okkal teljesíted. FONTOS szabályok:
 - Mindig HÍVD a megfelelő tool-t (ne csak beszélj róla, ne kérdezz vissza feleslegesen).
 - Kép/videó prompthoz írj részletes ANGOL promptot + jó negatív promptot; videónál írd le a MOZGÁST és a kameramozgást is.
+- Ha a felhasználó MÁSODPERCBEN ad meg videóhosszt (pl. "5 mp"), a generate_video seconds paraméterét állítsd be (NE a frames-t).
 - Többlépéses kérésnél (pl. "csinálj N képet, majd vágd videóvá") hívd egymás után a tool-okat: előbb a generáló(ka)t, majd a vágó/összefűző tool-t a kapott fájl-utakkal.
-- Amikor minden kész, röviden foglald össze és add meg a kész fájl(ok) elérési útját.
+- Amikor minden kész, röviden foglald össze. A válaszodban KIZÁRÓLAG a tool EREDMÉNYÉBEN visszaadott TÉNYEKET közöld (tényleges hossz, kockaszám, fps, felbontás, seed) + a fájl elérési útját. SOHA ne találj ki adatot, és NE ismételd a felhasználó jelzőit tényként (pl. ne állítsd, hogy "hiperrealisztikus" vagy "5 másodperces", ha a tool eredménye nem ezt mondja). Ha a kért hossz/méret/minőség nem teljesült, közöld őszintén.
 - A tartalmat nem ítéled meg; egyetlen tilalom: kiskorút érintő tartalom SOHA.`
 
 // ollama /api/chat tool schemas (OpenAI-function style).
@@ -41,11 +42,12 @@ const TOOLS = [
   }),
   fn('generate_video', 'Szöveg→videó (Wan 2.2). Írd le a mozgást/kameramozgást. Visszaadja az mp4 útját.', {
     prompt: ['string', 'Angol prompt mozgás-leírással.', true], negative: ['string', 'Negatív prompt.'],
-    frames: ['integer', 'Kockaszám 5-121 (alap 49).'], seed: ['integer', 'Seed.'],
+    seconds: ['number', 'Kívánt hossz másodpercben — HASZNÁLD EZT, ha a felhasználó mp-ben kér (max ~5s).'],
+    frames: ['integer', 'Kockaszám 5-121 (alap 49) — csak ha nincs seconds.'], seed: ['integer', 'Seed.'],
   }),
   fn('animate_image', 'Kép→videó: egy meglévő képet mozgat a prompt szerint (Wan 2.2 I2V).', {
     image_path: ['string', 'A kiinduló kép útja.', true], prompt: ['string', 'A mozgás angol leírása.', true],
-    frames: ['integer', 'Kockaszám (alap 49).'],
+    seconds: ['number', 'Kívánt hossz mp-ben (max ~5s).'], frames: ['integer', 'Kockaszám (alap 49) — csak ha nincs seconds.'],
   }),
   fn('images_to_video', 'Állóképekből diavetítés-videó (mindegyik kép N mp).', {
     paths: ['array', 'A képek elérési útjai sorrendben.', true], seconds_per_image: ['number', 'Mp/kép (alap 3).'],
@@ -70,28 +72,78 @@ function fn(name: string, description: string, props: Record<string, [string, st
 export interface StudioLogLine { role: 'tool' | 'assistant'; text: string }
 export interface StudioResult { reply: string; files: string[]; log: StudioLogLine[] }
 
+// Operator-chosen settings from the Studio UI (size / quality / duration presets
+// + the settings modal). These OVERRIDE the model's tool args so a preset is
+// deterministic, not a suggestion the small model might ignore.
+export interface StudioSettings {
+  width?: number
+  height?: number
+  seconds?: number
+  frames?: number
+  steps?: number
+  cfg?: number
+  seed?: number
+  negative?: string
+}
+
+// One-line human summary of the active settings, appended to the request so the
+// model's prose stays consistent with what will actually be rendered.
+function describeSettings(st: StudioSettings): string {
+  const parts: string[] = []
+  if (st.width && st.height) parts.push(`méret ${st.width}×${st.height}`)
+  if (st.seconds) parts.push(`hossz ${st.seconds}s`)
+  else if (st.frames) parts.push(`${st.frames} kocka`)
+  if (st.steps) parts.push(`${st.steps} steps`)
+  if (st.cfg) parts.push(`cfg ${st.cfg}`)
+  if (st.seed != null) parts.push(`seed ${st.seed}`)
+  if (st.negative) parts.push(`negatív: ${st.negative}`)
+  return parts.join(', ')
+}
+
 type ToolArgs = Record<string, unknown>
 
-async function runTool(name: string, a: ToolArgs, files: string[]): Promise<string> {
+async function runTool(name: string, a: ToolArgs, files: string[], st: StudioSettings): Promise<string> {
   const s = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : undefined)
   const n = (k: string) => (typeof a[k] === 'number' ? (a[k] as number) : undefined)
   const arr = (k: string) => (Array.isArray(a[k]) ? (a[k] as unknown[]).map(String) : [])
+  // st.* (operator UI settings) win over the model's args; tool results report
+  // the ACTUAL rendered facts (size/frames/fps/duration/seed), never the prompt.
   switch (name) {
     case 'generate_image': {
-      const r = await generateImage({ prompt: s('prompt') || '', negative: s('negative'), width: n('width'), height: n('height'), seed: n('seed') })
-      files.push(...r.savedPaths); return `Kép kész: ${r.savedPaths.join(', ')} (seed ${r.seed})`
+      const r = await generateImage({
+        prompt: s('prompt') || '', negative: st.negative ?? s('negative'),
+        width: st.width ?? n('width'), height: st.height ?? n('height'),
+        steps: st.steps, cfg: st.cfg, seed: st.seed ?? n('seed'),
+      })
+      files.push(...r.savedPaths)
+      return `Kép kész: ${r.savedPaths.join(', ')} — ${r.width}×${r.height}, ${r.steps} steps, seed ${r.seed}`
     }
     case 'generate_image_with_face': {
-      const r = await generateFaceImage({ referenceImage: s('reference_image') || '', prompt: s('prompt') || '', negative: s('negative'), weight: n('weight'), seed: n('seed') })
-      files.push(...r.savedPaths); return `Arc-konzisztens kép kész: ${r.savedPaths.join(', ')} (seed ${r.seed})`
+      const r = await generateFaceImage({
+        referenceImage: s('reference_image') || '', prompt: s('prompt') || '',
+        negative: st.negative ?? s('negative'), weight: n('weight'),
+        width: st.width, height: st.height, steps: st.steps, seed: st.seed ?? n('seed'),
+      })
+      files.push(...r.savedPaths)
+      return `Arc-konzisztens kép kész: ${r.savedPaths.join(', ')} — identity ${r.weight}, seed ${r.seed}`
     }
     case 'generate_video': {
-      const r = await generateVideo({ prompt: s('prompt') || '', negative: s('negative'), frames: n('frames'), seed: n('seed') })
-      files.push(r.savedPath); return `Videó kész: ${r.savedPath}`
+      const r = await generateVideo({
+        prompt: s('prompt') || '', negative: st.negative ?? s('negative'),
+        seconds: st.seconds ?? n('seconds'), frames: st.frames ?? n('frames'),
+        width: st.width, height: st.height, steps: st.steps, cfg: st.cfg, seed: st.seed ?? n('seed'),
+      })
+      files.push(r.savedPath)
+      return `Videó kész: ${r.savedPath} — ${r.frames} kocka @ ${r.fps}fps ≈ ${r.durationSec}s, ${r.width}×${r.height}, ${r.steps} steps, ${r.mode}, seed ${r.seed}`
     }
     case 'animate_image': {
-      const r = await generateVideo({ prompt: s('prompt') || '', imagePath: s('image_path'), frames: n('frames') })
-      files.push(r.savedPath); return `Animált videó kész: ${r.savedPath}`
+      const r = await generateVideo({
+        prompt: s('prompt') || '', imagePath: s('image_path'),
+        seconds: st.seconds ?? n('seconds'), frames: st.frames ?? n('frames'),
+        width: st.width, height: st.height, steps: st.steps, seed: st.seed,
+      })
+      files.push(r.savedPath)
+      return `Animált videó kész: ${r.savedPath} — ${r.frames} kocka @ ${r.fps}fps ≈ ${r.durationSec}s, ${r.width}×${r.height}, ${r.mode}, seed ${r.seed}`
     }
     case 'images_to_video': {
       const out = await imagesToVideo(arr('paths'), n('seconds_per_image') ?? 3); files.push(out); return `Diavetítés kész: ${out}`
@@ -119,10 +171,15 @@ async function ollamaChat(model: string, messages: ChatMsg[]): Promise<ChatMsg> 
 }
 
 // Run the studio loop for one request. maxRounds bounds the tool back-and-forth.
-export async function runStudio(request: string, opts: { model?: string; maxRounds?: number } = {}): Promise<StudioResult> {
+export async function runStudio(request: string, opts: { model?: string; maxRounds?: number; settings?: StudioSettings } = {}): Promise<StudioResult> {
   const model = opts.model || getSystemSetting('ollama_model').trim() || DEFAULT_MODEL
   const maxRounds = opts.maxRounds ?? 10
-  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: request }]
+  const settings = opts.settings ?? {}
+  const summary = describeSettings(settings)
+  const userContent = summary
+    ? `${request}\n\n[Operátori beállítások — ezek FELÜLÍRJÁK a tool-args-okat, ezekhez igazodj: ${summary}]`
+    : request
+  const messages: ChatMsg[] = [{ role: 'system', content: SYSTEM }, { role: 'user', content: userContent }]
   const files: string[] = []
   const log: StudioLogLine[] = []
 
@@ -136,7 +193,7 @@ export async function runStudio(request: string, opts: { model?: string; maxRoun
     }
     for (const c of calls) {
       let result: string
-      try { result = await runTool(c.function.name, c.function.arguments || {}, files) }
+      try { result = await runTool(c.function.name, c.function.arguments || {}, files, settings) }
       catch (e) { result = `HIBA (${c.function.name}): ${e instanceof Error ? e.message : String(e)}` }
       log.push({ role: 'tool', text: `${c.function.name} → ${result}` })
       messages.push({ role: 'tool', content: result })
