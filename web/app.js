@@ -10168,9 +10168,9 @@ document.getElementById('studioRequest')?.addEventListener('keydown', (e) => {
 function syncStudioPresets() {
   const ta = document.getElementById('studioRequest')
   if (!ta) return
-  document.querySelectorAll('.studio-input-wrap .studio-preset').forEach(b => b.classList.toggle('active', ta.value.includes(b.dataset.style)))
+  document.querySelectorAll('.studio-input-wrap .studio-preset:not(.studio-preset--setting)').forEach(b => b.classList.toggle('active', ta.value.includes(b.dataset.style)))
 }
-document.querySelectorAll('.studio-input-wrap .studio-preset').forEach((btn) => {
+document.querySelectorAll('.studio-input-wrap .studio-preset:not(.studio-preset--setting)').forEach((btn) => {
   btn.addEventListener('click', () => {
     const ta = document.getElementById('studioRequest')
     if (!ta) return
