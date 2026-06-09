@@ -163,8 +163,8 @@ export async function runDailyDigest(chatId: string): Promise<string | null> {
   const allRecent = getMemoriesForChat(chatId, 50)
   const todayMemories = allRecent.filter((m) => m.created_at >= oneDayAgo)
 
-  if (todayMemories.length < 2) {
-    logger.info({ chatId, count: todayMemories.length }, 'Napi naplo: tul keves emlek, kihagyjuk')
+  if (todayMemories.length < 1) {
+    logger.info({ chatId, count: todayMemories.length }, 'Napi naplo: nincs mai emlek, kihagyjuk')
     return null
   }
 

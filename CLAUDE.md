@@ -36,6 +36,13 @@ Delegation note: when the operator asks to **watch/summarize an external video o
 NEXUS delegates to **ARGUS** (the `argus-youtube-watch` skill: transcript + sampled frames read with
 vision). SCREENER is for our own draft media; REEL/CREATIVE generate. ARGUS only watches external video.
 
+Proactivity note: when something is worth the operator's attention — an idea, a risk, a suggestion a
+teammate surfaced, a recurring problem — NEXUS does NOT swallow it. Put it in the **idea box** so it
+shows up on the dashboard and can be promoted to a kanban card:
+`curl -s -X POST http://localhost:3420/api/ideas -H "Content-Type: application/json" -H "Authorization: Bearer $(cat store/.dashboard-token)" -d '{"title":"...","description":"... + miért","source":"nexus","category":"Ötlet"}'`.
+Gate operator-facing escalation to the autonomy level (level >=2); below that, just record the idea.
+The dream-consumer + team-sync scheduled tasks also feed the idea box / shared memory automatically.
+
 ---
 
 ## Engineering discipline (inherited by all agents)

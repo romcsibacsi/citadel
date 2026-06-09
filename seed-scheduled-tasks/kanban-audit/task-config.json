@@ -4,5 +4,6 @@
   "enabled": true,
   "type": "heartbeat",
   "skipIfBusy": false,
+  "bypassTriage": true,
   "createdAt": 0
 }

@@ -1,0 +1,8 @@
+{
+  "schedule": "30 2 * * *",
+  "agent": "nexus",
+  "enabled": true,
+  "type": "task",
+  "skipIfBusy": true,
+  "createdAt": 0
+}

@@ -55,9 +55,16 @@ curl -s -H "$AUTH" "$BASE/api/kanban"   # nyitott kártyák: project, priority, 
 
 Csoportosíts project szerint, súlyozz prioritás + aznapi aktivitás (napló/kanban-mozgás) szerint, és hozz ki **TOP-3 holnapi javaslatot**. Formátum soronként: `<project>: <kártya/akció> — <indok 1 mondat>`.
 
-## Bucket 4 — 🌐 Külső lehetőség (heti 1×, nem minden éjjel)
+## Bucket 4 — 🌐 Külső lehetőség (heti 1×, CSAK hétfőn)
 
-Hetente 1-2×, NEM minden éjszaka: `WebSearch` új Claude Code / agentic-AI / a csapat tényleges projektjeihez illő skillekért/eszközökért. A relevanciát az operátorod **valós kanban-projektjeiből és a friss memóriákból** vezesd le (ne feltételezz piacot/témát). Szűrés: GitHub >100 csillag, utóbbi 90 napban aktív, világos README. Ha az elmúlt 7 napban már volt ajánlás (lásd a DREAM.md korábbi tartalmát), **skip**. Output: max 1 ajánlás (repo URL + 1 mondat: miért illik a csapat aktuális munkájához), vagy „Skip — heti limit / nincs releváns".
+**Determinisztikus heti kadencia: csak HÉTFŐN fut** (a DREAM.md éjjel felülíródik, így a „7 napon belül volt-e már" nem megbízható — ezért nap-alapú a kapu). Először:
+
+```bash
+[ "$(date +%u)" = "1" ] && echo "HÉTFŐ — fut" || echo "Skip — nem hétfő"
+```
+
+Ha NEM hétfő: a Bucket 4 kimenete legyen „Skip — nem hétfő", és lépj tovább. Ha hétfő:
+`WebSearch` új Claude Code / agentic-AI / a csapat tényleges projektjeihez illő skillekért/eszközökért. A relevanciát az operátorod **valós kanban-projektjeiből és a friss memóriákból** vezesd le (ne feltételezz piacot/témát). Szűrés: GitHub >100 csillag, utóbbi 90 napban aktív, világos README. Output: max 1-2 ajánlás (repo URL + 1 mondat: miért illik a csapat aktuális munkájához), vagy „Skip — nincs releváns".
 
 ## Bucket 5 — 🛠 Skill-flotta egészség (csak NEM-védett skillek)
 
