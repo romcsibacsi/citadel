@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
-import { execSync, execFileSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import { resolveFromPath } from '../platform.js'
 import { atomicWriteFileSync } from './atomic-write.js'
 import { logger } from '../logger.js'
@@ -143,9 +143,8 @@ function attemptFireTask(task: ScheduledTask, agentName: string, now: number): '
       // settings (which it has done before in this fleet -- the very
       // motivation for this whole rearchitecture), the leftover Telegram
       // tool would receive an explicit instruction to use chat_id
-      // ALLOWED_CHAT_ID. So: emit a minimal heartbeat tag for the
-      // resubmit-marker code below to match, and let the agent's own
-      // CLAUDE.md + SKILL.md drive behaviour.
+      // ALLOWED_CHAT_ID. So: emit a minimal heartbeat tag, and let the
+      // agent's own CLAUDE.md + SKILL.md drive behaviour.
       if (agentName === 'heartbeat') {
         prefix = `[Heartbeat: ${task.name}] `
       } else if (CHANNEL_PROVIDER === 'telegram') {
@@ -175,32 +174,13 @@ function attemptFireTask(task: ScheduledTask, agentName: string, now: number): '
     persistScheduleLastRun()
     appendTaskRun(task.name, agentName)
     logger.info({ task: task.name, agent: agentName, session }, 'Scheduled task fired')
-
-    // Post-send verify: if the agent started a new turn during our chunk
-    // stream, the Enter from sendPromptToSession might have landed while
-    // the agent was thinking and Claude Code parked the bytes on the input
-    // line. We want the prompt to run, not disappear -- so if the pane
-    // still shows our marker below ❯ after a short wait, re-send Enter so
-    // the submit sticks. We retry a couple of times before giving up.
-    const marker = task.type === 'heartbeat'
-      ? `[Heartbeat: ${task.name}]`
-      : `[Utemezett feladat: ${task.name}]`
-    const resubmit = (attempt: number) => {
-      try {
-        const pane = execFileSync(TMUX, ['capture-pane', '-t', session, '-p'], { timeout: 3000, encoding: 'utf-8' })
-        const stuck = /❯\s+\S/.test(pane) && pane.includes(marker)
-        if (!stuck) return
-        if (attempt >= 5) {
-          logger.warn({ task: task.name, session }, 'Scheduled prompt still stuck after 5 Enter retries -- giving up')
-          return
-        }
-        execFileSync(TMUX, ['send-keys', '-t', session, 'Enter'], { timeout: 3000 })
-        setTimeout(() => resubmit(attempt + 1), 3000)
-      } catch (err) {
-        logger.warn({ err, task: task.name }, 'Post-send resubmit failed')
-      }
-    }
-    setTimeout(() => resubmit(0), 2000)
+    // Submission + the swallowed-Enter retry live inside sendPromptToSession
+    // (decideSubmitFollowup/shouldRetrySubmit, scoped to the LIVE input box);
+    // a prompt parked mid-turn is recovered by the stuck-input-watcher. A
+    // scheduler-local resubmit used to sit here but scanned the WHOLE pane
+    // (`❯\S` + marker) and false-positived on scrollback -- it logged
+    // "still stuck" and fired spurious Enters on an already-submitted prompt
+    // (observed 2026-06-09). Removed; the two scoped backstops cover it.
     return 'fired'
   } catch (err) {
     logger.warn({ err, task: task.name }, 'Failed to fire scheduled task')

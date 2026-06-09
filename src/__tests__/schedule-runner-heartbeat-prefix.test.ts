@@ -20,10 +20,10 @@ import { join } from 'node:path'
 const SRC = readFileSync(join(__dirname, '../web/schedule-runner.ts'), 'utf-8')
 
 describe('schedule-runner heartbeat prefix branches by agentName', () => {
-  it('keeps the [Heartbeat: ${task.name}] tag (resubmit-marker matches)', () => {
-    // The marker downstream is `[Heartbeat: ${task.name}]`. Both
-    // branches of the new conditional MUST emit it -- otherwise the
-    // resubmit-retry code at the bottom of the function stops working.
+  it('keeps the [Heartbeat: ${task.name}] tag in the prompt prefix', () => {
+    // The tag is the operator-facing marker prepended to the heartbeat
+    // prompt; both branches of the conditional MUST emit it so every
+    // heartbeat prompt is consistently labelled.
     expect(SRC).toMatch(/\[Heartbeat: \$\{task\.name\}\]/)
   })
 
