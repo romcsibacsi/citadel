@@ -10192,6 +10192,16 @@ document.getElementById('studioRequest')?.addEventListener('input', syncStudioPr
 // STRUCTURED params sent as `settings`, which the backend applies as hard
 // overrides over the model's tool args -> precise, deterministic output.
 const studioSettings = {}
+let studioMode = 'image'
+// Quality is a LEVEL; the actual steps depend on the mode (the 14B video model
+// runs Lightning at ~4-8 steps, images use 20-45). So "Magas" = 45 for image but
+// 8 for video, and switching mode re-derives studioSettings.steps.
+const QUALITY_STEPS = { image: { fast: 20, normal: 30, high: 45 }, video: { fast: 4, normal: 6, high: 8 } }
+let studioQuality = null // 'fast' | 'normal' | 'high' | null
+function applyStudioQuality() {
+  if (studioQuality) studioSettings.steps = QUALITY_STEPS[studioMode][studioQuality]
+  else delete studioSettings.steps
+}
 
 function studioSyncSettingChips() {
   document.querySelectorAll('.studio-input-wrap [data-setting-group]').forEach((group) => {
@@ -10199,7 +10209,7 @@ function studioSyncSettingChips() {
     group.querySelectorAll('.studio-preset--setting').forEach((b) => {
       let active = false
       if (kind === 'size') active = studioSettings.width === +b.dataset.w && studioSettings.height === +b.dataset.h
-      else if (kind === 'quality') active = studioSettings.steps === +b.dataset.steps
+      else if (kind === 'quality') active = studioQuality === b.dataset.q
       else if (kind === 'seconds') active = studioSettings.seconds === +b.dataset.seconds
       b.classList.toggle('active', active)
     })
@@ -10213,8 +10223,9 @@ document.querySelectorAll('.studio-input-wrap .studio-preset--setting').forEach(
       if (studioSettings.width === w && studioSettings.height === h) { delete studioSettings.width; delete studioSettings.height }
       else { studioSettings.width = w; studioSettings.height = h }
     } else if (g === 'quality') {
-      const st = +btn.dataset.steps
-      if (studioSettings.steps === st) delete studioSettings.steps; else studioSettings.steps = st
+      const level = btn.dataset.q
+      studioQuality = (studioQuality === level) ? null : level
+      applyStudioQuality()
     } else if (g === 'seconds') {
       const sec = +btn.dataset.seconds
       if (studioSettings.seconds === sec) delete studioSettings.seconds; else studioSettings.seconds = sec
@@ -10234,10 +10245,11 @@ document.getElementById('studioCustomSeconds')?.addEventListener('input', (e) =>
 // Kép / Videó mode: sent to the backend (which forces the matching tools so the
 // model can't pick the wrong output type), and shows/hides the video-only preset
 // groups (Mozgás, Hossz) so image mode isn't cluttered with video settings.
-let studioMode = 'image'
 function applyStudioMode() {
   document.querySelectorAll('#studioModeToggle .studio-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === studioMode))
   document.querySelectorAll('.studio-input-wrap .studio-video-only').forEach(g => { g.style.display = studioMode === 'video' ? '' : 'none' })
+  applyStudioQuality() // re-derive steps for the new mode (Magas: 45 image / 8 video)
+  studioSyncSettingChips()
 }
 document.querySelectorAll('#studioModeToggle .studio-mode-btn').forEach((btn) => {
   btn.addEventListener('click', () => { studioMode = btn.dataset.mode; applyStudioMode() })
@@ -10258,7 +10270,9 @@ function studioCloseSettings() { document.getElementById('studioSettingsModal')?
 function studioApplySettings() {
   const numv = (id) => { const x = (document.getElementById(id)?.value || '').trim(); return x === '' ? undefined : Number(x) }
   const setNum = (k, val) => { if (val === undefined || Number.isNaN(val)) delete studioSettings[k]; else studioSettings[k] = val }
-  setNum('width', numv('setWidth')); setNum('height', numv('setHeight')); setNum('steps', numv('setSteps'))
+  const stepsVal = numv('setSteps')
+  setNum('width', numv('setWidth')); setNum('height', numv('setHeight')); setNum('steps', stepsVal)
+  if (stepsVal !== undefined) studioQuality = null // a manual steps value overrides the quality preset level
   setNum('cfg', numv('setCfg')); setNum('seconds', numv('setSeconds')); setNum('seed', numv('setSeed'))
   const neg = (document.getElementById('setNegative')?.value || '').trim()
   if (neg) studioSettings.negative = neg; else delete studioSettings.negative
@@ -10267,6 +10281,8 @@ function studioApplySettings() {
 }
 function studioResetSettings() {
   for (const k of Object.keys(studioSettings)) delete studioSettings[k]
+  studioQuality = null
+  const ci = document.getElementById('studioCustomSeconds'); if (ci) ci.value = ''
   studioSyncSettingChips()
   studioCloseSettings()
 }

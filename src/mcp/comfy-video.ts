@@ -286,13 +286,13 @@ export async function generateVideo(params: VideoParams): Promise<VideoResult> {
   const rawFrames = params.seconds != null ? Math.round(params.seconds * fps) : (params.frames ?? 49)
   const frames = Math.min(Math.max(Math.round((rawFrames - 1) / 4) * 4 + 1, 5), 121)
   // Lightning LoRAs make the 14B a ~4-step / cfg-1 model; the 5B uses 30 / cfg 5.
-  // The 14B runs Lightning LoRAs (distilled for ~4-8 steps). The image-oriented
-  // quality presets (20/30/45) would be slow AND degrade it, so remap any
-  // requested step count into the Lightning range: Gyors(<=22)->4, Normál->6,
-  // Magas(>35)->8. The 5B uses the raw value. cfg is forced to 1 for the 14B
+  // The 14B runs Lightning LoRAs (distilled for ~4-8 steps). The UI already
+  // sends mode-appropriate steps for video (4/6/8); just clamp into the Lightning
+  // range so a stray image-steps value (e.g. 45 typed in the modal) can't slow it
+  // down / degrade it. The 5B uses the raw value. cfg is forced to 1 for the 14B
   // because Lightning requires CFG=1 (a higher cfg produces artifacts).
   const steps = is14b
-    ? (params.steps == null ? 4 : params.steps <= 22 ? 4 : params.steps <= 35 ? 6 : 8)
+    ? Math.min(Math.max(params.steps ?? 4, 2), 8)
     : (params.steps ?? 30)
   const cfg = is14b ? 1 : (params.cfg ?? 5)
   const seed = params.seed ?? (randomBytes(4).readUInt32BE(0) % 2_000_000_000)
