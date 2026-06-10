@@ -9,7 +9,7 @@ operátor elé kerül a lényeg. Ez a dokumentum a teljes hurok komponenseit ír
 ```
 napi munka (ügynökök)
    │
-   ├─(*/15) memoria-heartbeat ──► /api/memories (hot/warm/cold/shared)  +  skill-reflexió ──► ~/.claude/skills/
+   ├─(*/15) memoria-heartbeat ──► /api/memories (hot/warm/cold/shared)  +  skill-reflexió ──► ágens-lokális .claude/skills/
    ├─(PreCompact hook) ─────────► memória + skill + task-state  (kontextus-tömörítéskor)
    │
    ├─(23:50) team-sync ─────────► shared memória (ki mit csinált / miben jó)
@@ -18,7 +18,7 @@ napi munka (ügynökök)
 (02:07) dream-engine ──► store/DREAM.md  (konszolidálás + skill-javaslatok + top-3 + heti websearch)
    │
    ▼
-(02:30) dream-consumer ──► a javaslatokból: skill-méltó → ~/.claude/skills/ ;  operátor-ügy → /api/ideas
+(02:30) dream-consumer ──► a javaslatokból: skill-méltó → ágens-lokális skills (globálisra NEXUS-jóváhagyással) ;  operátor-ügy → /api/ideas
    │
    ▼
 (07:30) reggeli-napindito ──► Dream-kivonat + naptár + AI hírek  →  élő csatorna (Discord)
