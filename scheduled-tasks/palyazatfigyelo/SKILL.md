@@ -1,17 +1,20 @@
 ---
 name: palyazatfigyelo
-description: Heti pályázat-figyelő — újra-ellenőrzi a HU/EU tech-pályázati forrásokat, és CSAK az ÚJ vagy VÁLTOZOTT, kis/induló tech céghez illő (non-dilutive) kiírást jelenti a csatornára. Csendes, ha nincs új. READ-ONLY, minden adat forrás-idézve.
+description: Heti pályázat-figyelő — KÉT domaint néz: (1) HU/EU tech-pályázatok (kis/induló cég, non-dilutive) és (2) család+otthon támogatások (CSOK Plusz/babaváró/energetika, Pest m./Szigetszentmiklós). CSAK az ÚJ vagy VÁLTOZOTT releváns kiírást jelenti, kategória-jelöléssel; csendes, ha nincs új. READ-ONLY, forrás-idézve.
 ---
 
 Te most a **Pályázatfigyelő** heti futását végzed CITADEL alatt (NEXUS-ként jelentesz a csatornára). Hétfő ~08:00 van.
 
-**Cél:** heti újra-ellenőrzés a vissza nem térítendő (non-dilutive), kis/induló TECH céghez illő pályázati forrásokon. Mindig a `docs/palyazatfigyelo-baseline.md`-hez (és a korábbi futásokhoz) hasonlítasz, és CSAK az ÚJ vagy VÁLTOZOTT releváns kiírást jelented — ne spammelj.
+**Cél:** heti újra-ellenőrzés KÉT domainen: (1) non-dilutive, kis/induló TECH céghez illő pályázatok, és (2) család+otthon támogatások az operátor profiljára. Mindig a `docs/palyazatfigyelo-baseline.md`-hez (és a korábbi futásokhoz) hasonlítasz, és CSAK az ÚJ vagy VÁLTOZOTT releváns kiírást jelented (a jelentésben jelöld, melyik domain) — ne spammelj.
 
-**Relevancia-szűrő:** kis/induló tech — digitalizáció, K+F, startup, mikro/kis-KKV. NEM releváns: nagyvállalat, mezőgazdaság, önkormányzat.
+**Relevancia-szűrő (két profil):**
+- **(1) Tech-cég:** kis/induló tech — digitalizáció, K+F, startup, mikro/kis-KKV, non-dilutive. NEM releváns: nagyvállalat, mezőgazdaság.
+- **(2) Család+otthon:** 2 gyermekes család (4é + 6 hó), saját **családi ház Szigetszentmiklóson** (Pest megye, ~40e fős VÁROS). FONTOS kizáró: a <5000 fős kistelepülésre szóló programok (Vidéki Otthonfelújítási, Falusi CSOK) NEM jogosultak. Illik: CSOK Plusz vnt. rész, Otthoni Energiatároló (napelem+tároló), energetikai modernizáció, babaváró (ha jogosult). Jövedelemfüggő rászorultsági ellátás nem cél.
 
 ## Források (heti újra-ellenőrzés)
 - **HU:** Palyazat.gov.hu, Széchenyi Terv Plusz (DIMOP+/GINOP+), Demján Sándor program, NGM/HIPA, NKFIH aktuális felhívások.
 - **EU:** Horizon Europe / EIC (Accelerator), Digital Europe Programme (HaDEA).
+- **CSALÁD+OTTHON:** CSOK Plusz / babaváró / falusi CSOK (csok.gov.hu, hazavaro.gov.hu, Magyar Államkincstár allamkincstar.gov.hu, bankok), otthonfelújítás + energetikai támogatás / Otthoni Energiatároló (kormany.hu, palyazat.gov.hu, napenergiaplusz.nffku.hu), Pest megyei / szigetszentmiklósi önkormányzati (szigetszentmiklos.hu).
 
 A keresést WebSearch + WebFetch-csel végezd; minden adatot hivatalos forrás-linkkel idézz. READ-ONLY: ne tölts fel, ne jelentkezz be, ne adj be és ne cselekedj — csak figyelj és jelents.
 
@@ -34,7 +37,7 @@ A keresést WebSearch + WebFetch-csel végezd; minden adatot hivatalos forrás-l
 ## Csatorna-jelentés formátum (ha van mit jelenteni)
 - Telegram MarkdownV2, a Reggeli Napindító escaping-szabályaival (speciális karaktereket escapelni: `( ) . - + = ! { } [ ] | ~ > #`).
 - Cím: 📣 *Pályázatfigyelő — új/változott kiírás*
-- Kiírásonként 2-3 sor + hivatalos link; a <14 napos határidőt ⚠️-vel kiemeld.
+- Kiírásonként 2-3 sor + hivatalos link; jelöld a domaint (**[TECH]** / **[CSALÁD+OTTHON]**); a <14 napos határidőt ⚠️-vel kiemeld.
 
 ## Buktatók
 - READ-ONLY: soha ne jelentkezz be, ne tölts fel, ne adj be semmit — csak figyelsz és jelentesz.
