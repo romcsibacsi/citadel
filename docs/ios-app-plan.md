@@ -51,6 +51,17 @@ Konkrétan (Fázis 0):
 > **ASSUMPTION:** az operátornak van/lehet Tailscale-fiókja és telepíthető a kliens az iPhone-ra.
 > Ha ez kizárt, a tartalék: **B + NPM Access List**, soha nem B önmagában a tokennel mint egyetlen kapu.
 
+> **OPERÁTOR DÖNTÉS (2026-06-10):** a kezdő modell **A — LAN-only HTTP (stopgap)**; a megvalósítás
+> későbbre halasztva (most csak a terv készült). Következmények erre a választásra:
+> - Tiszta HTTP-n a **PWA service worker NEM regisztrál** (nincs secure context) → nincs offline shell és
+>   nincs web-push; az add-to-homescreen ikon működhet, de degradáltan. Ezért LAN-only esetén a **Fázis 0
+>   (HTTPS + PWA) elesik**, és a tiszta út a **Fázis 1 WKWebView shell** ATS-kivétellel
+>   (`NSExceptionDomains` → `192.168.1.105`), Keychain + Face ID.
+> - A token **titkosítatlan a LAN-on** → csak megbízható otthoni wifin; hálózaton kívül nem elérhető.
+> - **ntfy push változatlanul megy** (saját csatorna, független a dashboard elérési módjától).
+> - **Upgrade-path:** bármikor át lehet váltani Tailscale/NPM HTTPS-re a `DASHBOARD_PUBLIC_URL` +
+>   `WEB_HOST` állításával és (shell esetén) az ATS-kivétel eltávolításával — kódváltás nélkül.
+
 ## Architektúra — fázisok
 
 ### Fázis 0 — HTTPS + PWA (órák)
