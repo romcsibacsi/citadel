@@ -1,0 +1,9 @@
+{
+  "schedule": "0 8 * * 1",
+  "agent": "nexus",
+  "enabled": true,
+  "type": "heartbeat",
+  "skipIfBusy": true,
+  "bypassTriage": true,
+  "createdAt": 1781113887
+}
