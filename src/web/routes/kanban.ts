@@ -5,6 +5,7 @@ import {
   getKanbanComments, addKanbanComment, listKanbanProjects,
   getKanbanCard, getChildCards, getDb,
   createAgentMessage, markKanbanCardDispatched,
+  getIdeaByKanbanId, archiveIdea,
 } from '../../db.js'
 import { OWNER_NAME, BOT_NAME, MAIN_AGENT_ID } from '../../config.js'
 import { listAgentNames, readAgentDisplayName } from '../agent-config.js'
@@ -37,6 +38,20 @@ function fireKanbanDispatch(id: string): void {
     logger.info({ id, target, assignee: card.assignee }, 'Kanban in_progress dispatch fired')
   } catch (err) {
     logger.warn({ err, id }, 'Kanban dispatch failed (card move still succeeded)')
+  }
+}
+
+// When a card moves to 'done', archive the linked idea-box entry (if any) so the
+// resolved idea leaves the active view but is preserved (never deleted). Error-
+// tolerant: the card move must never fail because of this hook (mirrors dispatch).
+function fireIdeaArchiveOnDone(cardId: string): void {
+  try {
+    const idea = getIdeaByKanbanId(cardId)
+    if (!idea || idea.status === 'archived') return
+    archiveIdea(idea.id)
+    logger.info({ cardId, ideaId: idea.id }, 'Idea archived on card done')
+  } catch (err) {
+    logger.warn({ err, cardId }, 'Idea auto-archive failed (card move still succeeded)')
   }
 }
 
@@ -100,6 +115,8 @@ export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
     if (moveKanbanCard(id, status, sort_order ?? 0)) {
       // Wake the assigned agent once when the card enters in_progress.
       if (status === 'in_progress') fireKanbanDispatch(id)
+      // Archive the linked idea-box entry when the card is done (preserve, not delete).
+      if (status === 'done') fireIdeaArchiveOnDone(id)
       json(res, { ok: true })
       return true
     }

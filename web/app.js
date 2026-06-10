@@ -9560,8 +9560,8 @@ window.addEventListener('resize', () => {
 let ideas = []
 let ideasPromoteId = null
 let ideaEditId = null
-const STATUS_COLORS = { new: 'var(--accent)', reviewed: '#f59e0b', kanban: '#22c55e', rejected: '#ef4444' }
-const STATUS_LABELS = { new: 'Új', reviewed: 'Átnézve', kanban: 'Kanbanban', rejected: 'Elutasítva' }
+const STATUS_COLORS = { new: 'var(--accent)', reviewed: '#f59e0b', kanban: '#22c55e', rejected: '#ef4444', archived: '#94a3b8' }
+const STATUS_LABELS = { new: 'Új', reviewed: 'Átnézve', kanban: 'Kanbanban', rejected: 'Elutasítva', archived: 'Archív' }
 
 async function loadIdeasPage() {
   const statusFilter = document.getElementById('ideaStatusFilter')?.value || ''
@@ -9582,7 +9582,7 @@ async function loadIdeasPage() {
 }
 
 function renderIdeasStats() {
-  const counts = { new: 0, reviewed: 0, kanban: 0, rejected: 0 }
+  const counts = { new: 0, reviewed: 0, kanban: 0, rejected: 0, archived: 0 }
   for (const i of ideas) counts[i.status] = (counts[i.status] || 0) + 1
   const el = document.getElementById('ideasStats')
   if (!el) return
@@ -9624,12 +9624,15 @@ function renderIdeaCard(idea) {
         ${desc}
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        ${idea.status === 'archived' ? `<span style="font-size:11px;color:var(--text-muted)">archiválva${idea.archived_at ? ' · ' + new Date(idea.archived_at * 1000).toLocaleDateString('hu-HU') : ''}</span>` : `
         ${idea.status !== 'reviewed' && idea.status !== 'kanban' ? `<button class="btn-secondary btn-compact" onclick="setIdeaStatus('${idea.id}','reviewed')" style="font-size:11px">Átnézve</button>` : ''}
         ${idea.status !== 'rejected' ? `<button class="btn-secondary btn-compact" onclick="setIdeaStatus('${idea.id}','rejected')" style="font-size:11px;color:#ef4444">Elutasít</button>` : ''}
         ${idea.status === 'reviewed' || idea.status === 'rejected' ? `<button class="btn-secondary btn-compact" onclick="setIdeaStatus('${idea.id}','new')" style="font-size:11px">Újra</button>` : ''}
         <button class="btn-secondary btn-compact" onclick="openIdeaEdit('${idea.id}')" style="font-size:11px">Szerkeszt</button>
         ${idea.status !== 'kanban' && idea.status !== 'rejected' ? `<button class="btn-primary btn-compact" onclick="openIdeaBreakdown('${idea.id}')" style="font-size:11px">Kanbanra (AI)</button>` : ''}
+        <button class="btn-secondary btn-compact" onclick="archiveIdeaItem('${idea.id}')" style="font-size:11px">Archiválás</button>
         <button class="btn-secondary btn-compact" onclick="deleteIdeaItem('${idea.id}')" style="font-size:11px;color:#ef4444">Töröl</button>
+        `}
       </div>
     </div>
   </div>`
@@ -9671,6 +9674,15 @@ async function deleteIdeaItem(id) {
   if (!confirm('Biztosan törlöd?')) return
   await fetch(`/api/ideas/${id}`, { method: 'DELETE' })
   loadIdeasPage()
+}
+
+async function archiveIdeaItem(id) {
+  try {
+    const res = await fetch(`/api/ideas/${id}/archive`, { method: 'POST' })
+    if (!res.ok) { showToast('Archiválás hiba'); return }
+    showToast('Ötlet archiválva')
+    loadIdeasPage()
+  } catch { showToast('Archiválás hiba') }
 }
 
 function openIdeaPromote(id) {

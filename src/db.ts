@@ -468,13 +468,42 @@ export function initDatabase(dbPathOverride?: string): void {
       title TEXT NOT NULL,
       description TEXT,
       category TEXT NOT NULL DEFAULT 'Egyéb',
-      status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','reviewed','kanban','rejected')),
+      status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','reviewed','kanban','rejected','archived')),
       source TEXT NOT NULL DEFAULT 'nexus',
       kanban_id TEXT,
+      archived_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )
   `)
+  // Migration for existing DBs: add the 'archived' status + archived_at column.
+  // SQLite cannot ALTER a CHECK constraint, so rebuild the table when the new
+  // archived_at column is absent (idempotent; preserves every row -- never deletes).
+  try {
+    const ideaCols = db.prepare('PRAGMA table_info(idea_box)').all() as { name: string }[]
+    if (!ideaCols.some((c) => c.name === 'archived_at')) {
+      db.exec(`
+        CREATE TABLE idea_box_new (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          description TEXT,
+          category TEXT NOT NULL DEFAULT 'Egyéb',
+          status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','reviewed','kanban','rejected','archived')),
+          source TEXT NOT NULL DEFAULT 'nexus',
+          kanban_id TEXT,
+          archived_at INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        INSERT INTO idea_box_new (id, title, description, category, status, source, kanban_id, archived_at, created_at, updated_at)
+          SELECT id, title, description, category, status, source, kanban_id, NULL, created_at, updated_at FROM idea_box;
+        DROP TABLE idea_box;
+        ALTER TABLE idea_box_new RENAME TO idea_box;
+      `)
+    }
+  } catch (err) {
+    console.error('[db] idea_box archived migration failed:', err instanceof Error ? err.message : String(err))
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_idea_box_status ON idea_box(status)`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_idea_box_category ON idea_box(category)`)
 
@@ -1569,9 +1598,10 @@ export interface IdeaBoxRow {
   title: string
   description: string | null
   category: string
-  status: 'new' | 'reviewed' | 'kanban' | 'rejected'
+  status: 'new' | 'reviewed' | 'kanban' | 'rejected' | 'archived'
   source: string
   kanban_id: string | null
+  archived_at: number | null
   created_at: number
   updated_at: number
 }
@@ -1579,13 +1609,18 @@ export interface IdeaBoxRow {
 export function listIdeas(opts?: { status?: string; category?: string }): IdeaBoxRow[] {
   let q = 'SELECT * FROM idea_box WHERE 1=1'
   const params: string[] = []
-  if (opts?.status) { q += ' AND status = ?'; params.push(opts.status) }
+  // status semantics: 'archived' -> only archived; 'active' or omitted -> hide
+  // archived (the default dashboard view); any specific status -> exact match.
+  const status = opts?.status
+  if (status === 'archived') { q += " AND status = 'archived'" }
+  else if (status && status !== 'active') { q += ' AND status = ?'; params.push(status) }
+  else { q += " AND status != 'archived'" }
   if (opts?.category) { q += ' AND category = ?'; params.push(opts.category) }
   q += ' ORDER BY created_at DESC'
   return db.prepare(q).all(...params) as IdeaBoxRow[]
 }
 
-export function createIdea(idea: Omit<IdeaBoxRow, 'created_at' | 'updated_at'>): void {
+export function createIdea(idea: Omit<IdeaBoxRow, 'created_at' | 'updated_at' | 'archived_at'>): void {
   const now = Math.floor(Date.now() / 1000)
   db.prepare(
     `INSERT INTO idea_box (id, title, description, category, status, source, kanban_id, created_at, updated_at)
@@ -1608,6 +1643,32 @@ export function updateIdea(id: string, patch: Partial<Pick<IdeaBoxRow, 'title' |
 
 export function deleteIdea(id: string): boolean {
   return db.prepare('DELETE FROM idea_box WHERE id = ?').run(id).changes > 0
+}
+
+// Archive an idea (status='archived' + archived_at). Archive, never delete --
+// the row is preserved. Returns true only if a non-archived row was changed.
+export function archiveIdea(id: string): boolean {
+  const now = Math.floor(Date.now() / 1000)
+  return db.prepare(
+    "UPDATE idea_box SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND status != 'archived'",
+  ).run(now, now, id).changes > 0
+}
+
+// Reverse lookup: the idea linked to a kanban card (for the done -> archive hook).
+export function getIdeaByKanbanId(kanbanId: string): IdeaBoxRow | undefined {
+  return db.prepare('SELECT * FROM idea_box WHERE kanban_id = ?').get(kanbanId) as IdeaBoxRow | undefined
+}
+
+// Fallback / first-use sweep: archive every non-archived idea whose linked kanban
+// card is 'done'. Idempotent; returns how many were archived.
+export function reconcileArchivedIdeas(): number {
+  const now = Math.floor(Date.now() / 1000)
+  return db.prepare(`
+    UPDATE idea_box SET status = 'archived', archived_at = ?, updated_at = ?
+    WHERE status != 'archived'
+      AND kanban_id IS NOT NULL
+      AND kanban_id IN (SELECT id FROM kanban_cards WHERE status = 'done')
+  `).run(now, now).changes
 }
 
 export function listIdeaCategories(): string[] {

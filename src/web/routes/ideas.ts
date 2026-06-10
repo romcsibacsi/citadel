@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { listIdeas, createIdea, updateIdea, deleteIdea, listIdeaCategories, createKanbanCard, getDb } from '../../db.js'
+import { listIdeas, createIdea, updateIdea, deleteIdea, listIdeaCategories, createKanbanCard, getDb, archiveIdea, reconcileArchivedIdeas } from '../../db.js'
 import { logger } from '../../logger.js'
 import { readBody, json } from '../http-helpers.js'
 import type { RouteContext } from './types.js'
@@ -80,6 +80,14 @@ export async function tryHandleIdeas(ctx: RouteContext): Promise<boolean> {
     return true
   }
 
+  // Fallback / first-use sweep: archive every idea whose linked card is 'done'.
+  // (Belt-and-suspenders to the kanban move -> done auto-archive hook.)
+  if (path === '/api/ideas/reconcile-archived' && method === 'POST') {
+    const archived = reconcileArchivedIdeas()
+    json(res, { ok: true, archived })
+    return true
+  }
+
   if (path === '/api/ideas' && method === 'POST') {
     const body = await readBody(req)
     const data = JSON.parse(body.toString()) as {
@@ -118,6 +126,17 @@ export async function tryHandleIdeas(ctx: RouteContext): Promise<boolean> {
     const id = decodeURIComponent(ideaMatch[1])
     if (deleteIdea(id)) { json(res, { ok: true }); return true }
     json(res, { error: 'Ötlet nem található' }, 404)
+    return true
+  }
+
+  // Manual archive (for ideas resolved without a kanban card): status=archived +
+  // archived_at. Archive, never delete -- the row is preserved.
+  const archiveMatch = path.match(/^\/api\/ideas\/([^/]+)\/archive$/)
+  if (archiveMatch && method === 'POST') {
+    const id = decodeURIComponent(archiveMatch[1])
+    if (!getIdea(id)) { json(res, { error: 'Ötlet nem található' }, 404); return true }
+    archiveIdea(id)
+    json(res, { ok: true })
     return true
   }
 
