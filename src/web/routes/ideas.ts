@@ -12,6 +12,59 @@ function getIdea(id: string): IdeaRow | undefined {
 
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent'])
 
+// Heuristic assignee routing for generated subtasks: match the subtask text to the
+// agent whose lane it falls in. First match wins; default 'nexus'. Leading-only word
+// boundary (no trailing \b) so Hungarian suffixes still match (pl. "tesztet"->teszt).
+const ASSIGNEE_HINTS: Array<[RegExp, string]> = [
+  [/\b(teszt|test|qa|regresszi|bug)/i, 'probe'],
+  [/\b(deploy|release|ci\/?cd|pipeline|csomagol|kiadás|verzió)/i, 'harbor'],
+  [/\b(design|ux|wireframe|mockup|layout|vizuál)/i, 'prism'],
+  [/\b(homelab|netops|infra|szerver|telepít)/i, 'relay'],
+  [/\b(kutat|research|intel|biztonság|security|felderít)/i, 'oracle'],
+  [/\b(adat|data|elemz|spreadsheet|statisztik)/i, 'sigma'],
+  [/\b(kép|image|comfy|illusztr)/i, 'creative'],
+  [/\b(videó|video|klip|anim)/i, 'reel'],
+  [/\b(kód|code|build|implement|fejleszt|refaktor|feature|endpoint|api|fix)/i, 'forge'],
+]
+function guessAssignee(text: string): string {
+  for (const [rx, who] of ASSIGNEE_HINTS) if (rx.test(text)) return who
+  return 'nexus'
+}
+
+// Deterministic breakdown of an idea into actionable subtasks (no LLM -- subscription
+// OAuth only, never ANTHROPIC_API_KEY). Split the description into bullet/numbered/
+// newline items, strip the markers, dedupe, cap, and heuristically assign each. Falls
+// back to a single subtask from the title when the description is empty or not
+// splittable. The operator edits these in the breakdown modal before promote-breakdown
+// creates the cards.
+export function breakdownIdea(
+  idea: Pick<IdeaRow, 'title' | 'description'>,
+): Array<{ title: string; description: string; assignee: string; priority: string }> {
+  const desc = (idea.description ?? '').trim()
+  const items = desc
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*([-*•■▪◦·]|\d+[.)])\s*/, '').trim())
+    .filter((l) => l.length > 0)
+  const seen = new Set<string>()
+  const unique = items
+    .filter((l) => { const k = l.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true })
+    .slice(0, 12)
+  if (unique.length >= 2) {
+    return unique.map((l) => ({
+      title: l.slice(0, 120),
+      description: l.length > 120 ? l : '',
+      assignee: guessAssignee(l),
+      priority: 'normal',
+    }))
+  }
+  return [{
+    title: String(idea.title).slice(0, 120),
+    description: desc.slice(0, 500),
+    assignee: guessAssignee(`${idea.title} ${desc}`),
+    priority: 'normal',
+  }]
+}
+
 export async function tryHandleIdeas(ctx: RouteContext): Promise<boolean> {
   const { req, res, path, method, url } = ctx
 
@@ -93,6 +146,19 @@ export async function tryHandleIdeas(ctx: RouteContext): Promise<boolean> {
     })
     updateIdea(ideaId, { status: 'kanban', kanban_id: cardId })
     json(res, { ok: true, kanban_id: cardId })
+    return true
+  }
+
+  // Generate a DRAFT breakdown of an idea into subtasks (deterministic, no LLM). The
+  // frontend's "Kanbanra (AI)" button POSTs here; without this endpoint it 404'd. The
+  // returned {subtasks} populate the breakdown modal, where the operator edits/approves
+  // before POST .../promote-breakdown creates the parent + child cards.
+  const breakdownMatch = path.match(/^\/api\/ideas\/([^/]+)\/breakdown$/)
+  if (breakdownMatch && method === 'POST') {
+    const ideaId = decodeURIComponent(breakdownMatch[1])
+    const idea = getIdea(ideaId)
+    if (!idea) { json(res, { error: 'Ötlet nem található' }, 404); return true }
+    json(res, { subtasks: breakdownIdea(idea) })
     return true
   }
 
