@@ -35,6 +35,7 @@ napi munka (ügynökök)
 | **dream-consumer** | `30 2` | DREAM.md javaslatai → skillek + ötletláda | `scheduled-tasks/dream-consumer` |
 | **reggeli-napindito** | `30 7` | napindító (Dream + naptár + hírek) a csatornára | `scheduled-tasks/reggeli-napindito` |
 | **kanban-audit** | `0 8,12,16,20` (bypassTriage) | beakadt/lejárt kártyák auditja | `scheduled-tasks/kanban-audit` |
+| **bumblebee-hygiene-scan** | `0 9 * * 1` (bypassTriage) | heti supply-chain szken (Bumblebee), riasztás csak találatra | `seed-scheduled-tasks/bumblebee-hygiene-scan` |
 
 ## Memória
 
@@ -63,30 +64,52 @@ A `heartbeat`-típusú konszolidációs feladatok (memoria-heartbeat, kanban-aud
 kihagyják a triage-kaput, így csendes napokon is futnak — de `type=heartbeat` marad (csendes prefix +
 keep-alive). Részletek: [heartbeat-autonomy.md](./heartbeat-autonomy.md).
 
+## bumblebee-hygiene-scan (heti supply-chain szken) — TELEPÍTVE 2026-06-09
+
+A **Perplexity Bumblebee** (`github.com/perplexityai/bumblebee`, Apache 2.0) read-only szkenner: leltárba
+veszi a telepített csomagokat / MCP-szervereket / kiterjesztéseket (npm/pypi/go/mcp/editor-extension/...),
+és ismert supply-chain támadás-katalógusokhoz illeszti **pontos (ecosystem, normalized_name, version)**
+egyezéssel. Hétfő 09:00, és **csak találatra** (findings > 0) riaszt a csatornára; 0 találat = csend.
+
+**Telepített állapot (live host, repón kívül):**
+- Go: `~/.local/go` (go1.25.11, tarball SHA256 ellenőrizve a go.dev ellen).
+- Bináris: `~/.local/bin/bumblebee` (v0.1.1, `./cmd/bumblebee`-ből buildelve).
+- Feladat: `~/.claude/scheduled-tasks/bumblebee-hygiene-scan/` (SKILL.md + task-config.json, `type=heartbeat`,
+  `bypassTriage:true`, `agent:nexus`, cron `0 9 * * 1`).
+- Katalógusok: `~/.claude/tools/bumblebee-threat-intel/` — 6 db (antv-mini-shai-hulud, gemstuffer,
+  mini-shai-hulud, node-ipc-credential-stealer, nx-console-vscode-2026-05-18, shopsprint-decimal-typosquat).
+
+**Verifikálva (2026-06-09):** `selftest OK`; tiszta host-szken → 928 csomag, 0 találat, `status=complete`
+(csendes ág); szintetikus egyező katalógus → `record_type=finding` rekord, amit a SKILL.md `grep` elkap
+(riasztó ág); mind a 4 független adversarial verifier `pass`. A 6 vendored katalógus megegyezik az upstream
+v0.1.1 `threat_intel/` tartalmával.
+
+**Gotcha:** a katalógus `schema_version` MEZŐ értéke kötelezően `"0.1.0"` (a bináris csak ezt fogadja el;
+bármi más → exit 2). A találat-rekordok és a katalógusok is `"0.1.0"`-t használnak. A futási JSON tömör
+(nincs szóköz a kettőspont után), így a `grep '"record_type":"finding"'` byte-pontosan illeszkedik.
+
+**Újraépítés (sudo nélkül, ha a host elveszik):**
+```bash
+# 1) Go >= 1.25 (no-sudo: tarball a home-ba; a friss 1.25.x a go.dev/dl?mode=json-ből)
+cd /tmp && curl -fLO https://go.dev/dl/go1.25.11.linux-amd64.tar.gz
+mkdir -p ~/.local ~/.local/bin && rm -rf ~/.local/go && tar -C ~/.local -xzf go1.25.11.linux-amd64.tar.gz
+# 2) bumblebee build (PIN v0.1.1)
+cd /tmp && git clone https://github.com/perplexityai/bumblebee && cd bumblebee && git checkout v0.1.1
+~/.local/go/bin/go build -o ~/.local/bin/bumblebee ./cmd/bumblebee && ~/.local/bin/bumblebee version
+# 3) feladat telepítése (placeholder-feloldás + bypassTriage:true a task-configban):
+D=~/.claude/scheduled-tasks/bumblebee-hygiene-scan; mkdir -p "$D"
+sed -e 's|{{INSTALL_DIR}}|/home/uplinkfather/CITADEL/citadel|g' -e 's/{{MAIN_AGENT_ID}}/nexus/g' \
+  seed-scheduled-tasks/bumblebee-hygiene-scan/SKILL.md > "$D/SKILL.md"
+# task-config.json: {schedule:"0 9 * * 1",agent:"nexus",enabled:true,type:"heartbeat",skipIfBusy:true,bypassTriage:true}
+# 4) katalógusok seedelése (a SKILL.md első futáskor is bemásolja, de előre is megtehető):
+C=~/.claude/tools/bumblebee-threat-intel; mkdir -p "$C"
+cp seed-scheduled-tasks/bumblebee-hygiene-scan/threat-intel/*.json "$C/"
+```
+A SKILL.md hibamentesen **kihagyja** a szkent, amíg a bináris nincs meg (info-log, nem hiba) — így a feladat
+bináris nélkül is biztonságosan ott állhat. Havi katalógus-frissítés: a SKILL.md 30 naponta `git clone`-ozza
+az upstream `threat_intel/`-t (a dir neve aláhúzásos: `threat_intel`).
+
 ## Megjegyzések / hátralévő
 
-- **bumblebee-hygiene-scan** (heti supply-chain biztonsági szken) NINCS telepítve — Go bináris kell hozzá.
-  Mi ez: a **Perplexity Bumblebee** (`github.com/perplexityai/bumblebee`, Apache 2.0) read-only szkenner,
-  ami leltárba veszi a telepített csomagokat / MCP-szervereket / kiterjesztéseket, és ismert
-  supply-chain támadás-katalógusokhoz illeszti (a seed 6 katalógust szállít: shai-hulud, node-ipc-stealer,
-  nx-console, shopsprint typosquat, gemstuffer). Hétfő 09:00, csak egyezésnél riaszt.
-
-  **Telepítés (sudo nélkül megoldható):**
-  ```bash
-  # 1) Go >= 1.25 (no-sudo: tarball a home-ba)
-  cd /tmp && curl -fLO https://go.dev/dl/go1.25.0.linux-amd64.tar.gz   # vagy a friss verzió a go.dev/dl-ről
-  mkdir -p ~/.local && tar -C ~/.local -xzf go1.25.0.linux-amd64.tar.gz   # -> ~/.local/go
-  # 2) bumblebee build (v0.1.1)
-  cd /tmp && git clone https://github.com/perplexityai/bumblebee && cd bumblebee && git checkout v0.1.1
-  ~/.local/go/bin/go build -o ~/.local/bin/bumblebee ./cmd/bumblebee
-  ~/.local/bin/bumblebee --version   # ellenőrzés
-  # 3) feladat telepítése (a SKILL.md self-skip-el, ha a bináris hiányzik):
-  D=~/.claude/scheduled-tasks/bumblebee-hygiene-scan; mkdir -p "$D"
-  for f in seed-scheduled-tasks/bumblebee-hygiene-scan/*.{md,json}; do
-    sed -e 's|{{INSTALL_DIR}}|/home/uplinkfather/CITADEL/citadel|g' -e 's/{{MAIN_AGENT_ID}}/nexus/g' "$f" > "$D/$(basename "$f")"; done
-  # a task-config type=heartbeat -> add "bypassTriage": true, hogy ténylegesen fusson (lásd lent).
-  ```
-  A 6 threat-intel katalógust a SKILL.md első futáskor magától bemásolja `~/.claude/tools/bumblebee-threat-intel`-be.
-  A SKILL.md hibamentesen kihagyja a szkent, amíg a bináris nincs meg — így a feladat előre telepíthető.
 - A `runDailyDigest` chat-kulcsú (ALLOWED_CHAT_ID) — a heartbeat-memóriák ehhez a chathez taggelve íródnak,
   így a digest látja őket. (A küszöb 1 emlékre csökkentve, hogy csendes napon is fusson.)

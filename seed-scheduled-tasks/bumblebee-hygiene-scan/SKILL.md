@@ -47,7 +47,8 @@ fi
 
 4. **Evaluate findings**:
 ```bash
-FINDING_COUNT=$(grep -c '"record_type":"finding"' /tmp/bb-weekly.ndjson 2>/dev/null || echo 0)
+FINDING_COUNT=$(grep -c '"record_type":"finding"' /tmp/bb-weekly.ndjson 2>/dev/null)
+FINDING_COUNT=${FINDING_COUNT:-0}   # grep -c prints 0 and exits 1 on no match; normalize
 ```
 
 5. **Telegram ONLY if finding > 0**: send alert with finding details (ecosystem, package, version, which threat catalog matched). If 0 findings: stay silent (heartbeat style, transcript line only).
