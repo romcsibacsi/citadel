@@ -9,7 +9,7 @@ description: ~15-30 percenként átnézi a beszélgetést, menti a fontosat, és
 
 ---
 
-Nézd át az utolsó kb. fél óra beszélgetésedet. Két dolgot csinálj. Munkakönyvtár: `/home/uplinkfather/CITADEL/citadel`.
+Nézd át az utolsó kb. fél óra beszélgetésedet. Három dolgot csinálj. Munkakönyvtár: `/home/uplinkfather/CITADEL/citadel`.
 
 ## 1. Memória mentés
 
@@ -23,6 +23,19 @@ curl -s -X POST http://localhost:3420/api/memories \
 ```
 
 `category`: `hot` (aktív), `warm` (preferencia/config), `cold` (tanulság), `shared` (más ágensnek is). Az `agent_id`-t a CLAUDE.md-ből vagy a munkamappa nevéből derítsd ki (a CITADEL roster: nexus, forge, spark, sigma, relay, screener, oracle).
+
+## 1.5 Napi napló (ha volt érdemi munka)
+
+Ha ebben a ciklusban volt tényleges munka — érdemi döntés/akció, vagy a 2. pont **A/B/C** bármelyike IGEN —, írj **egyetlen tömör sort** a napi naplóba arról, MIT csináltál. Ezt táplálja a Dream Engine és a team-sync konszolidáció (e nélkül vakon futnak):
+
+```bash
+curl -s -X POST http://localhost:3420/api/daily-log \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(cat /home/uplinkfather/CITADEL/citadel/store/.dashboard-token)" \
+  -d '{"agent_id":"SAJAT_NEVED","content":"1 mondat: mit csináltál ebben a ciklusban"}'
+```
+
+Csendes heartbeaten (A=B=C=NEM, nincs érdemi munka) **NE** írj naplót — a napló a tényleges munkáról szól, nem a csendről.
 
 ## 2. Skill reflexió (KÖTELEZŐ, ha volt komplex munka)
 
@@ -58,7 +71,7 @@ Döntsd el 3 kérdéssel:
 **KIVÉTEL:** ha az operátor üzent (`<channel source=` vagy `<operator>` blokk), arra MINDIG válaszolj — a csendes szabály rá nem vonatkozik.
 
 Ha NINCS komplex feladat / hiba / korrekció (A=B=C=NEM), ÉS nincs várakozó üzenet, ÉS nincs új információ:
-- ne ments feleslegesen, ne generálj skillt, ne küldj üzenetet csatornára,
+- ne ments feleslegesen, ne generálj skillt, ne írj napi naplót, ne küldj üzenetet csatornára,
 - maradj csendben — egy rövid „csendes heartbeat" sor a transzkriptbe elég.
 
 Kizárólag a CITADEL roster (nexus, forge, spark, sigma, relay, screener, oracle) és a `/home/uplinkfather/CITADEL/citadel` útvonalak — régi/upstream nevek vagy útvonalak sehol.
