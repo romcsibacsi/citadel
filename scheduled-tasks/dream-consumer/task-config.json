@@ -3,6 +3,6 @@
   "agent": "nexus",
   "enabled": true,
   "type": "task",
-  "skipIfBusy": true,
+  "skipIfBusy": false,
   "createdAt": 0
 }
