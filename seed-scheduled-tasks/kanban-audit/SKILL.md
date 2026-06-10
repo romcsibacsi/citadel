@@ -52,7 +52,7 @@ echo "{\"last_audit_at\": $NOW}" > {{INSTALL_DIR}}/store/kanban-audit-state.json
 
 ## Buktatók
 - „Előző audit óta nem mozdult" = `updated_at < LAST` (NEM abszolút 24h küszöb).
-- Ne archiválj <7 napos done-t. Ne pingeld saját magad (`assignee=nexus`) vagy üres assignee-t.
+- Ne archiválj <7 napos done-t. Ne pingeld saját magad (`assignee={{MAIN_AGENT_ID}}`) vagy üres assignee-t.
 - Első futás (LAST=0) → ne pingelj, csak inicializáld a state-et.
 
 ## Ellenőrzés

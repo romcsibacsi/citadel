@@ -151,13 +151,13 @@ else
   fail "MAIN_AGENT_ID NOT substituted in task-config.json"
 fi
 
-if grep -q '/opt/testbot/store/citadel.db' "$SCHED_TARGET/kanban-audit/SKILL.md"; then
+if grep -q '/opt/testbot/store/kanban-audit-state.json' "$SCHED_TARGET/kanban-audit/SKILL.md"; then
   pass "INSTALL_DIR substituted in SKILL.md"
 else
   fail "INSTALL_DIR NOT substituted in SKILL.md"
 fi
 
-if grep -q "skip ha assignee='testbot'" "$SCHED_TARGET/kanban-audit/SKILL.md"; then
+if grep -q 'assignee=testbot' "$SCHED_TARGET/kanban-audit/SKILL.md"; then
   pass "MAIN_AGENT_ID substituted in SKILL.md buktatok"
 else
   fail "MAIN_AGENT_ID NOT substituted in SKILL.md buktatok"
@@ -180,7 +180,13 @@ fi
 echo ""
 echo "Test 4: seed-scheduled-tasks skips existing (full loop)"
 SCHED_TARGET2="$TMPDIR_BASE/t4-sched"
-mkdir -p "$SCHED_TARGET2/kanban-audit"
+# Pre-create EVERY seed task dir so seeding must skip all of them (idempotency).
+# Robust to new seed tasks (e.g. bumblebee-hygiene-scan added alongside kanban-audit).
+for tpl in "$SEED_SCHED_DIR"/*/; do
+  [ -d "$tpl" ] || continue
+  mkdir -p "$SCHED_TARGET2/$(basename "$tpl")"
+done
+# Mark one with custom content to verify it is preserved (not overwritten).
 echo "custom" > "$SCHED_TARGET2/kanban-audit/task-config.json"
 
 SCHED_NEW=0
