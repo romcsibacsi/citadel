@@ -1,0 +1,13 @@
+{
+  "displayName": "HARBOR",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "developer-senior",
+  "accent": "#0ea5e9",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}
