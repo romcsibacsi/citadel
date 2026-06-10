@@ -29,6 +29,8 @@ agents (see the privilege gate). The roster:
 | **CREATIVE** | Image generation via local ComfyUI (draft only) | pink |
 | **ARGUS** | Video watcher — watches EXTERNAL video (YouTube): transcript + frames via vision, summarizes (draft only) | amber |
 | **PRISM** | Designer — web/UI wireframe, mockup, design-system, visual direction as MARKDOWN/ASCII spec (draft only) | indigo |
+| **MUSE** | Image generation via local model (experimental — local-model tool-calling unreliable; trusted image = CREATIVE) (draft only) | purple |
+| **REEL** | Video generation — text/image → short clip (`generate_video` / `animate_image`, draft only) | teal |
 
 Team graph: every agent `reportsTo` NEXUS; NEXUS `delegatesTo` all. NEXUS never creates an agent
 more privileged than the fixed cap, and anything above sandbox requires explicit human approval.
