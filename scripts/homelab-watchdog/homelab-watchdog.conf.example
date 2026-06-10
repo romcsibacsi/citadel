@@ -1,0 +1,68 @@
+# homelab-watchdog.conf — RELAY (netops) fills this with the homelab specifics.
+# Copy to homelab-watchdog.conf next to the scripts. Bash-sourced; trusted (in-repo).
+#
+# This is a TEMPLATE based on docs/homelab-watchdog-proposal.md §2 matrix. The exact
+# container names, ports, compose paths and test commands are RELAY's to confirm/fill.
+# Anything left as a placeholder must be reviewed before live mode.
+
+############################  RECOVERY (deterministic) ############################
+# MANAGED: the allowlist of containers the recovery-watchdog may start when they are
+# PERSISTENTLY down/unhealthy. ONLY put "must always be running" containers here.
+# NEVER list an intentionally-stopped/.disabled container.
+MANAGED=(
+  radarr sonarr prowlarr qbittorrent overseerr plex
+  adguard nginx-proxy-manager vaultwarden
+  uptime-kuma beszel wud portainer forgejo n8n
+  # ... RELAY: complete with the real "must run" set; exclude anything intentionally off.
+)
+
+# Recovery command per container. Default if omitted: `docker start <name>`.
+# Override for compose-managed services (give the compose file + service name):
+declare -A RECOVERY=(
+  # [radarr]="docker compose -f /srv/arr/docker-compose.yml up -d radarr"
+  # [adguard]="docker compose -f /srv/adguard/docker-compose.yml up -d adguard"
+)
+
+CONFIRM_CHECKS=2     # must be down on this many consecutive runs before the 1st recovery
+MAX_ATTEMPTS=3       # after this many failed recoveries -> escalate (ntfy + kanban) and stop
+
+############################  UPDATE (test-gated full-auto) ######################
+# MANUAL: NEVER auto-updated -- only notify + a kanban card. The risky minority
+# (own update path / no safe smoke test). From the proposal:
+MANUAL=(
+  mailcow            # has its own update.sh -- the only safe path
+  nextcloud          # major = manual (occ upgrade steps)
+  homeassistant      # integrations can break -> notify-then-manual
+  # DB-majors (mariadb/postgres major) -- RELAY: list the specific DB containers
+)
+
+# FULLAUTO_TEST[c]: the post-update smoke/health test (exit 0 = PASS). This is THE gate.
+# RELAY: fill the real ports/URLs/API endpoints (and richer *arr connection tests).
+declare -A FULLAUTO_TEST=(
+  # [radarr]="curl -fsS http://localhost:7878/ping && curl -fsS -H 'X-Api-Key: <key>' http://localhost:7878/api/v3/system/status"
+  # [sonarr]="curl -fsS http://localhost:8989/ping"
+  # [prowlarr]="curl -fsS http://localhost:9696/ping"
+  # [qbittorrent]="curl -fsS http://localhost:8080/ && curl -fsS http://localhost:8080/api/v2/app/version"
+  # [overseerr]="curl -fsS http://localhost:5055/api/v1/status"
+  # [plex]="curl -fsS http://localhost:32400/identity"
+  # [adguard]="curl -fsS http://localhost:3000/control/status && dig +short @127.0.0.1 example.com >/dev/null"
+  # [nginx-proxy-manager]="curl -fsS http://localhost:81/ && curl -fsSo /dev/null -w '%{http_code}' https://<known-proxied-site>/ | grep -qE '200|301'"
+  # [vaultwarden]="curl -fsS http://localhost:8222/alive"
+  # [uptime-kuma]="curl -fsS http://localhost:3001/"
+  # ... static/simple web: HTTP 200 on the main URL.
+)
+
+# Per full-auto container, the commands the update-pipeline orchestrates. $TAG holds the
+# target tag when SET_TAG runs. RELAY: provide the real compose paths / service names.
+declare -A GET_TAG=(
+  # [radarr]="docker inspect -f '{{.Config.Image}}' radarr | sed 's/.*://'"
+)
+declare -A SET_TAG=(
+  # [radarr]="sed -i -E 's#(image: .*/radarr:).*#\\1'\"$TAG\"'#' /srv/arr/docker-compose.yml"
+)
+declare -A APPLY=(
+  # [radarr]="docker compose -f /srv/arr/docker-compose.yml pull radarr && docker compose -f /srv/arr/docker-compose.yml up -d radarr"
+)
+declare -A BACKUP=(
+  # [radarr]="mkdir -p /srv/backups/radarr && tar czf /srv/backups/radarr/config-$(date +%s).tar.gz -C /srv/arr radarr-config"
+)

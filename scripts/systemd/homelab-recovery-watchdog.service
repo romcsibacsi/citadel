@@ -1,0 +1,18 @@
+# Homelab recovery-watchdog (deterministic; layer 2 of the recovery design).
+# NOTE: replace /path/to/citadel (install dir), /home/USER, USER with your values.
+#
+# SAFETY: ships with DRY_RUN=1 (logs only, mutates nothing). The operator/RELAY
+# reviews a dry-run run, then sets DRY_RUN=0 here AND enables the timer to go live.
+# DO NOT enable this with DRY_RUN=0 before the operator has seen a dry-run result.
+[Unit]
+Description=Homelab recovery watchdog (start/up managed containers that are persistently down)
+
+[Service]
+Type=oneshot
+Environment=DRY_RUN=1
+Environment=PATH=/home/USER/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/USER
+Environment=TZ=Europe/Budapest
+ExecStart=/path/to/citadel/scripts/homelab-watchdog/recovery-watchdog.sh
+StandardOutput=append:/path/to/citadel/store/homelab-recovery-watchdog.log
+StandardError=append:/path/to/citadel/store/homelab-recovery-watchdog.log

@@ -1,0 +1,13 @@
+# Fires the homelab recovery-watchdog every few minutes.
+# Enable (only after the operator has approved the dry-run):
+#   systemctl --user enable --now homelab-recovery-watchdog.timer
+[Unit]
+Description=Run the homelab recovery watchdog periodically
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
