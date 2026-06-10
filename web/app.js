@@ -9558,6 +9558,7 @@ window.addEventListener('resize', () => {
 // Ideas (Ötletláda)
 // ============================================================
 let ideas = []
+let ideaStatusCounts = { new: 0, reviewed: 0, kanban: 0, rejected: 0, archived: 0 }
 let ideasPromoteId = null
 let ideaEditId = null
 const STATUS_COLORS = { new: 'var(--accent)', reviewed: '#f59e0b', kanban: '#22c55e', rejected: '#ef4444', archived: '#94a3b8' }
@@ -9569,9 +9570,20 @@ async function loadIdeasPage() {
   const params = new URLSearchParams()
   if (statusFilter) params.set('status', statusFilter)
   if (categoryFilter) params.set('category', categoryFilter)
-  const [ideasRes, catsRes] = await Promise.all([fetch('/api/ideas?' + params), fetch('/api/ideas/categories')])
+  // The displayed list is filter-scoped, but the stat counters must reflect the
+  // FULL per-status totals (filter-independent). active + archived = every idea.
+  const [ideasRes, catsRes, activeRes, archivedRes] = await Promise.all([
+    fetch('/api/ideas?' + params),
+    fetch('/api/ideas/categories'),
+    fetch('/api/ideas?status=active'),
+    fetch('/api/ideas?status=archived'),
+  ])
   ideas = await ideasRes.json()
   const cats = await catsRes.json()
+  const allForCounts = [...await activeRes.json(), ...await archivedRes.json()]
+  const counts = { new: 0, reviewed: 0, kanban: 0, rejected: 0, archived: 0 }
+  for (const i of allForCounts) counts[i.status] = (counts[i.status] || 0) + 1
+  ideaStatusCounts = counts
   const catSel = document.getElementById('ideaCategoryFilter')
   if (catSel) {
     const prev = catSel.value
@@ -9582,8 +9594,9 @@ async function loadIdeasPage() {
 }
 
 function renderIdeasStats() {
-  const counts = { new: 0, reviewed: 0, kanban: 0, rejected: 0, archived: 0 }
-  for (const i of ideas) counts[i.status] = (counts[i.status] || 0) + 1
+  // Filter-independent totals (computed in loadIdeasPage from active + archived),
+  // so e.g. the Archív count is correct even while the active view is shown.
+  const counts = ideaStatusCounts
   const el = document.getElementById('ideasStats')
   if (!el) return
   el.innerHTML = Object.entries(counts).map(([s, n]) =>
