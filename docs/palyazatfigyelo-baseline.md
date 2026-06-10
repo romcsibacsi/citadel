@@ -4,6 +4,7 @@
 **Kanban:** #f33b39a9 (baseline) · kapcsolódó ötlet: #6c4b1caa
 **Cél:** non-dilutive (vissza nem térítendő) tőke kis/induló TECH cég alapításához.
 **Relevancia-szűrő:** kis/induló tech — digitalizáció, K+F, startup, mikro/kisvállalkozás. NEM releváns: nagyvállalat, mezőgazdaság, önkormányzat.
+**Operátor-profil:** MOST alapítandó + Pest megyei tech cég, cél non-dilutive (részletek a FOLLOW-UP szekcióban).
 
 > Megjegyzés a megbízhatóságról: a `nkfih.gov.hu` aloldalak WebFetch-csel csak navigációt adtak vissza, a számadatok pályázatíró-portálokról (másodlagos forrás) származnak — ezeket **`ellenőrizendő`**-nek jelölöm, a hivatalos felhívás-PDF-ben kell visszaigazolni. A dátumok időérzékenyek; beadás előtt a hivatalos oldalon ellenőrizni kell.
 
@@ -64,3 +65,27 @@
 
 ### Következő lépés javaslat
 Recurring figyelő (heti) a 4 nyitott forrásra + a `ellenőrizendő` adatok visszaigazolása a hivatalos felhívás-PDF-ekből. (Doksi-commit: FORGE; figyelő ütemezés: NEXUS.)
+
+---
+
+## FOLLOW-UP (2026-06-10, kártya #c6b7cfe5) — profil: MOST ALAPÍTANDÓ cég + PEST MEGYE
+
+### K1 — DIMOP+ 1.2.6 jogosultság (Pest megye + lezárt év)
+
+- **Pest megye = B-26 konstrukció**, NEM C. Pest megye 2022 óta önálló NUTS2 régió (levált Budapestről), „kevésbé fejlett" besorolás → a **DIMOP+ 1.2.6/B-26** (kevésbé fejlett régiók, kivéve Budapest) vonatkozik rá. A C-26 kizárólag a budapesti régió. Intenzitás mindkettőnél 90%, összeg 3–12 M Ft. Forrás: [socialpro.hu/dimop-plusz-126](https://www.socialpro.hu/dimop-plusz-126/) · [pekszovetseg.hu](https://pekszovetseg.hu/dimop-plusz-1-2-6-b-kkv-k-novekedesi-lehetosegeinek-tamogatasa-a-digitalis-infrastruktura-es-transzformacio-elosegitesere/) · Pest régió: [origo.hu](https://www.origo.hu/gazdasag/2016/01/pest-megye-budapest-nuts-kmr-kozep-magyarorszagi-regio-unios-fejlesztes)
+- **B-26 jelenleg NYITOTT:** 2026.03.31 17:00 – 2026.06.30 23:59, de a keret **130%-ánál felfüggesztik**; áprilisban már nagy volumenű beadás → forráskimerülés reális kockázat. `ellenőrizendő` (hivatalos PDF: [palyazat.gov.hu DIMOP_PLUSZ-1.2.6-24 dokumentumok](https://www.palyazat.gov.hu/programok/szechenyi-terv-plusz/dimop-plusz/dimop_plusz-1.2.6-24/dokumentumok))
+- **Lezárt-év feltétel (a döntő pont):** min. **1 lezárt teljes (365 napos) üzleti év, 2024-nél nem régebbi** + min. **1 fő alkalmazott** (éves átlag) + **pozitív saját tőke**. A veszteséges/nulla-árbevételű lezárt év elfogadhatóságát a felhívás explicit NEM mondja (csak pozitív saját tőkét ír elő) → `ellenőrizendő` a hivatalos PDF-ből. **Következmény: a MOST alapítandó cégnek nincs lezárt éve → JELENLEG NEM jogosult a DIMOP+-ra (sem B, sem C).** Leghamarabb ~1 teljes üzleti év után nyílik meg neki (ha addig van keret).
+
+### K2 — Mely kiírás illik a friss, lezárt év NÉLKÜLI, Pest megyei tech céghez MOST?
+
+Őszinte lelet: **tiszta non-dilutive, nyitott, közvetlenül a nulla-lezárt-évű alapításra szóló HU kiírást nem találtam.** A legtöbb HU KKV-grant (DIMOP+, GINOP) min. 1 lezárt évet kér. A reális utak:
+
+| Lehetőség | Friss cégre? | Forma | Státusz | Link |
+|---|---|---|---|---|
+| **Inkubátoron keresztüli pre-seed** (NKFIH ÖKO_16 / STARTUP FACTORY rendszer): az inkubátor tartja az állami keretet, a startup **akár 80% vissza nem térítendő + 20% tőke** finanszírozást kap rajta keresztül | Igen (jellemzően max 5 éve bejegyzett, MVP/prototípus fázis) | **blended**: 80% grant + 20% equity | Az inkubátor-oldali kiírás (ÖKO_16) intézményeknek szól; startupként élő inkubátorhoz kell jelentkezni közvetlenül — melyik fogad most, `ellenőrizendő` | [nkfih.gov.hu ÖKO_16](https://nkfih.gov.hu/palyazoknak/innovacios-okosztisztema/innovacios-okoszisztema) |
+| **Hiventures pre-seed** | Igen (ötlet/team/üzleti terv) | **tőke (equity) — DILUTIVE** | Élő, de nem non-dilutive | [startup.hiventures.hu](https://startup.hiventures.hu/en) |
+| **EIC Accelerator** | Elvileg, de **TRL6+** kell (demonstrálható prototípus) — friss ötletcégnek jellemzően túl korai | Grant ≤ €2,5 M (non-dilutive) + opc. equity | Élő, havi short proposal | [eic.ec.europa.eu](https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator_en) |
+| **Virgo Ventures STARTUP factory** (80/20) | max 5 éve bejegyzett | 80% grant + 20% tőke | **LEZÁRT** (beadás 2022.07.31-ig) — történeti | [virgo.ventures](https://www.virgo.ventures/palyazat/) |
+| **OFA „Vállalkozóvá válás" (Bp+Pest m.)** | induló váll., de **álláskereső**-fókusz | 100% vissza nem térítendő, ~4,57 M Ft | Régi (2019-es ütemezés), aktuális státusz kétséges `ellenőrizendő` | [palyazatok.org](https://palyazatok.org/palyazat-budapesti-es-pest-megyei-vallalkozova-valas-elosegitesere-es-indulo-vallalkozasok-fejlesztesere/) |
+
+**Stratégiai következtetés:** A friss, Pest megyei tech cégnek a reális MOST-os non-dilutive út az **inkubátoron keresztüli 80%-os pre-seed** (blended, nem teljesen tiszta non-dilutive a 20% equity miatt) vagy **EIC** (ha már van TRL6+ prototípus). A nagy 90%-os HU digitalizációs/K+F grantek (DIMOP+ B-26, GINOP) **~1 lezárt üzleti év után** nyílnak meg neki — érdemes az alapítást/első évet úgy időzíteni, hogy utána ezekre is pályázható legyen.
