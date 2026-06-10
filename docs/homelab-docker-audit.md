@@ -206,3 +206,43 @@ Két réteg, kiegészítik egymást — **ne** telepíts mindent:
 Nincs mit visszagörgetni: a felmérés **kizárólag olvasás** volt (`docker ps/inspect/stats`,
 compose-könyvtár-leltár). A homelab állapota változatlan. Minden javasolt akció külön operátori
 jóváhagyást igényel.
+
+---
+
+# Addendum — 2026-06-10 (folytatás, kanban #bf5500cf)
+
+A P1 (Nextcloud) és a teljes WireGuard-szál lezárása UTÁN, friss állapot szerint.
+
+## P2 — ZOMBI-TAKARÍTÁS (VÉGREHAJTVA, reverzibilis)
+- **Törölve** (Created, 0 log, sosem indult — bind-dirök a diszken maradtak): `19d74c94670f_stirling-pdf`, `hivelink-static`.
+- **Dangling image prune** (`docker image prune -f`): 2 untagged image, **385.8 MB** felszabadítva.
+- Eredmény: **0 nem-futó konténer**, 65 fut. (A WG-cleanup során már kivezetve: wireguard-ui, wireguard-ui-wg, wg-easy, wireguard-web-simple.)
+- **Megjegyzés op-döntésre:** a `stirling-pdf` szolgáltatás **DOWN** (csak a zombi volt, most az is törölve). Ha kell, `compose up` a `/home/uplinkfather/docker/stirling-pdf`-ben — egyébként marad leállítva.
+- Docker képtár-összkép: ~20 GB unused (nem-dangling) image — `image prune -a` NEM futott (eltörhetné a leállított/compose-szolgáltatások visszahúzását); ez op-döntés, ha kell a hely.
+
+## P3 — ELAVULT IMAGE-EK + UPDATER-REDUNDANCIA (diagnózis + javaslat)
+Image-frissítést **nem** végeztem (egy major bump futó szolgáltatást törhet).
+
+**Updater-redundancia (gyors nyeremény, de viselkedés-változás → op-döntés):**
+- `watchtower` — **2023-as image, a projekt ARCHIVÁLT.** Config: `LABEL_ENABLE=true`, `ROLLING_RESTART`, `CLEANUP`, napi 04:00 → **AUTO-frissít** címkézett konténereket. Ez pont a P3-kockázat (rossz bump → szolgáltatás törik).
+- `wud` (What's Up Docker) — modern, `UPDATE_AUTO=false` → **csak figyel + értesít** (ntfy `watchtower` topic), minden konténerre.
+- **Javaslat:** `watchtower` kivezetése (archived + kockázatos auto-apply), a `wud` marad monitor-only. Csökkenti a kockázatot és a redundanciát. Reverzibilis (`compose up`). *Nem auto-töröltem*, mert a frissítési stratégiát változtatja — op-megerősítés kell.
+
+**Elavult image-ek (priorizálva):**
+| Image | Kor | Kockázat | Javaslat | Meló |
+|---|---|---|---|---|
+| `lsiocommunity/serviio` (2019) | ~7 év | magas (elhagyott image) | csere újabb DLNA-ra v. leállítás | közepes |
+| mailcow komponensek (nginx 1.03, postfix 1.80, dovecot 2.33… 2025-eleje) | ~1 év | közepes | **mailcow SAJÁT updaterével** (`./update.sh` a mailcow dirben) karbantartási ablakban — NE bumpold egyenként | közepes |
+| `:latest` kritikus szolgáltatásokon (NPM, vaultwarden, wordpress, *arr) | — | reprodukálhatóság | verzió-pin | nagyobb |
+
+## P4 — BIZTONSÁGI SZAG (diagnózis + javaslat; futó konténer security-jét NEM változtattam)
+A 0.0.0.0-bind LAN-szintű; a tényleges internet-kitettség a host-tűzfaltól/NPM-től függ — ezt nem módosítottam.
+
+**Priorizált hardening-javaslatok:**
+1. **Admin/shell UI-k 0.0.0.0-n → LAN-bind v. NPM+auth** (gyors, de konténer-restart kell → op-jóváhagyás):
+   - `code-server:8444` (webes IDE/shell — magas érték), `portainer:9000` (teljes docker-management + root socket), `qbittorrent:8080` (WebUI).
+2. **MCP-szerverek `:8076-8079` 0.0.0.0-n** — filesystem/**vault** MCP HTTP-n minden interfészen. Érzékeny (főleg `mcp-mcpvault`). Javaslat: localhost/LAN-bind.
+3. **Root-ként futó konténerek** — a futók túlnyomó része root. A linuxserver `*arr` (radarr/sonarr/prowlarr/qbittorrent/plex) támogatja a `PUID/PGID=1000`-t → nem-root migráció (szolgáltatásonként tesztelve). Nagyobb meló.
+4. **`test-proxy` (8400, restart=no)** — egy nginx reverse-proxy a CryptoHungary WordPress (192.168.1.105:8300) elé; HTTP 200, tehát **nem** használatlan, de a neve „test" és restart=no (reboot-ot nem él túl). Tisztázandó: szándékos ingress, vagy az NPM-et duplázó teszt-maradék? Ha utóbbi → kivezethető. (Nem zártam le, mert él.)
+
+**Már megoldva ebben a körben:** `wireguard-web-simple:5000` (auth nélküli VPN-kulcs-kitettség) kivezetve.
