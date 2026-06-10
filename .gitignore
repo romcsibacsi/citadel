@@ -52,3 +52,9 @@ citadel.log
 
 # Local backup archives from scripts/backup.sh
 backups/
+
+# Agent-local seed skills are product templates (tracked); the live copies
+# under agents/<name>/.claude/skills/ remain ignored via agents/ above.
+!seed-agents/*/.claude/
+!seed-agents/*/.claude/skills/
+!seed-agents/*/.claude/skills/**

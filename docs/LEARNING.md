@@ -44,13 +44,34 @@ SQLite (`store/citadel.db` → `memories`), 3+1 réteg: **hot** (épp aktív), *
 + FTS5 keresés. A `shared` réteget a kereső uniózza, így bármelyik ügynök látja. Salience-decay viszi
 hátrébb a régieket (sosem töröl). A napi-digest (`runDailyDigest`) episodic összefoglalót képez a napból.
 
-## Skillek
+## Skillek — két szintű modell (#7d64eea2)
 
-Fleet-skillek: `~/.claude/skills/` (minden ügynök látja az indexet — `scripts/skill-index.sh`). A skillek
-3 szinten töltődnek (név+leírás → teljes SKILL.md → segédfájlok). Generálás: a **memoria-heartbeat**
-reflexiója (folyamatosan) + a **PreCompact hook** (tömörítéskor) + a **dream-consumer** (éjszakai
-javaslatokból). Dedup a `skill-management` skillel; védett skillekhez (`pinned: true`, gyári/plugin)
-nem nyúl semmi.
+Két tárolási szint, a hatókör szerint — hogy ne gyűljön fel minden a közös névtérben, és ne legyen
+NEXUS-szűk-keresztmetszet minden apró skillnél:
+
+- **Globális / flotta-szintű:** `~/.claude/skills/` — MINDEN ügynök látja és betölti. Mivel mindenkit
+  érint, globális skill **létrehozása/patch-elése csak NEXUS-jóváhagyással** történhet (a ratifikált
+  governance 3. döntése). Verziókövetett forrás: `seed-skills/` (+ `skills/skill-factory/`), innen
+  seedeli az installer a `~/.claude/skills/`-be. Truly közös skillek: `handoff`, `retrospective`,
+  `skill-management`, `skill-factory`, `nexus-delegate-task`, `ai-fleet-project-execution`.
+- **Ágens-lokális:** `agents/<név>/.claude/skills/` — CSAK az adott ügynök látja (a saját
+  munkakönyvtárából töltődik). Mivel csak őt érinti, az ügynök **szabadon, jóváhagyás nélkül** hozhat
+  létre/patchelhet itt. Verziókövetett forrás: `seed-agents/<név>/.claude/skills/` (a `.gitignore`
+  kivételszabállyal követi; a `copySeedDir` seedeli a live `agents/<név>/.claude/skills/`-be). Példák:
+  `argus-youtube-watch`→argus, `github-pr-rebase-merge`→forge, `channel-plugin-duplicate-socket`→relay.
+
+**Mikor melyik?** Ha a skill egyetlen ügynök tárgyköréhez/eszközeihez tartozik → lokális. Ha a flotta
+egészének hasznos közös konvenció/mechanizmus → globális (NEXUS-jóváhagyással). Más ügynök lokális
+skilljéhez nem nyúlsz.
+
+**Index (két szintre):** `scripts/skill-index.sh` generálja (a) a globális indexet
+(`~/.claude/skills/.skill-index.md`, egyben NEXUS indexe) és (b) ágensenként a
+`agents/<név>/.claude/skills/.skill-index.md`-t = a globális skillek + AZ ADOTT ügynök lokális skilljei
+(más ügynök lokálisát NEM). A skillek 3 szinten töltődnek (név+leírás → teljes SKILL.md → segédfájlok).
+
+**Generálás/karbantartás:** a **memoria-heartbeat** reflexiója (folyamatosan) + a **PreCompact hook**
+(tömörítéskor) + a **dream-consumer** (éjszakai javaslatokból). Dedup a `skill-management` skillel;
+védett skillekhez (`pinned: true`, gyári/plugin) nem nyúl semmi.
 
 ## Proaktivitás (idea_box)
 

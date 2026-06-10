@@ -1,49 +1,103 @@
 #!/bin/bash
-# Skill Index Generator
-# Generates a Level 0 index of all available skills (name + description only)
-# This keeps token usage low while making all skills discoverable
+# Skill Index Generator (két szint: globális + ágens-lokális)
+# Level 0 index (csak név + leírás), hogy a token-használat alacsony maradjon, minden
+# skill mégis felfedezhető legyen.
+#
+#   - Globális index:  ~/.claude/skills/.skill-index.md
+#                      a flotta-szintű skillek; ez egyben NEXUS indexe is.
+#   - Ágens-lokális:   <repo>/agents/<név>/.claude/skills/.skill-index.md
+#                      = a GLOBÁLIS skillek + AZ ADOTT ágens lokális skilljei.
+#                      Soha nem tartalmazza más ágens lokális skilljeit.
 
-SKILLS_DIR="$HOME/.claude/skills"
-OUTPUT="$SKILLS_DIR/.skill-index.md"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+GLOBAL_SKILLS_DIR="$HOME/.claude/skills"
+AGENTS_DIR="$REPO_ROOT/agents"
 
-if [ ! -d "$SKILLS_DIR" ]; then
-  echo "No skills directory found at $SKILLS_DIR"
-  exit 0
+# Egy Markdown táblasort ad ki (| `név` | leírás |) egy skill-könyvtárból.
+# A SKILL.md frontmatteréből szedi a name/description mezőt (best-effort).
+emit_skill_row() {
+  local skill_dir="$1"
+  local skill_md="$skill_dir/SKILL.md"
+  [ -f "$skill_md" ] || return 1
+  local name desc
+  name=$(grep -m1 "^name:" "$skill_md" 2>/dev/null | sed 's/^name: *//' | tr -d '"' | tr -d "'")
+  [ -z "$name" ] && name=$(basename "$skill_dir")
+  desc=$(grep -m1 "^description:" "$skill_md" 2>/dev/null | sed 's/^description: *//' | tr -d '"' | tr -d "'" | cut -c1-120)
+  [ -z "$desc" ] && desc="(nincs leírás)"
+  echo "| \`$name\` | $desc |"
+  return 0
+}
+
+# A $1 könyvtár összes skilljét a $2 fájlba fűzi; a stdoutra a darabszámot adja.
+emit_skill_table() {
+  local dir="$1" out="$2" count=0
+  if [ -d "$dir" ]; then
+    for skill_dir in "$dir"/*/; do
+      [ -d "$skill_dir" ] || continue
+      if emit_skill_row "$skill_dir" >> "$out"; then
+        count=$((count + 1))
+      fi
+    done
+  fi
+  echo "$count"
+}
+
+# --- 1) Globális index (flotta-szintű; egyben NEXUS indexe) ---
+if [ -d "$GLOBAL_SKILLS_DIR" ]; then
+  OUT="$GLOBAL_SKILLS_DIR/.skill-index.md"
+  {
+    echo "# Skill Index — Globális (Level 0)"
+    echo ""
+    echo "A flotta-szintű (mindenki által elérhető) skillek indexe. Csak név + leírás (Level 0)."
+    echo "Globális skill létrehozása/patch-elése NEXUS-jóváhagyáshoz kötött (mindenkit érint)."
+    echo "Ha egy skill releváns, olvasd be a teljes SKILL.md-t (Level 1); segédfájlok: scripts/, references/ (Level 2)."
+    echo ""
+    echo "| Skill | Leírás |"
+    echo "|-------|--------|"
+  } > "$OUT"
+  GCOUNT=$(emit_skill_table "$GLOBAL_SKILLS_DIR" "$OUT")
+  {
+    echo ""
+    echo "_${GCOUNT} globális skill indexelve. Generálva: $(date '+%Y-%m-%d %H:%M')_"
+  } >> "$OUT"
+  echo "Global skill index: $OUT ($GCOUNT skills)"
 fi
 
-echo "# Skill Index (Level 0)" > "$OUTPUT"
-echo "" >> "$OUTPUT"
-echo "Ez az összes elérhető skill rövid indexe. Csak a nevet és leírást tartalmazza (Level 0)." >> "$OUTPUT"
-echo "Ha egy skill releváns, olvasd be a teljes SKILL.md-t (Level 1)." >> "$OUTPUT"
-echo "Ha segédfájlokra is szükség van, nézd meg a scripts/ és references/ mappákat (Level 2)." >> "$OUTPUT"
-echo "" >> "$OUTPUT"
-echo "| Skill | Leírás |" >> "$OUTPUT"
-echo "|-------|--------|" >> "$OUTPUT"
-
-SKILL_COUNT=0
-
-for skill_dir in "$SKILLS_DIR"/*/; do
-  [ -d "$skill_dir" ] || continue
-  skill_md="$skill_dir/SKILL.md"
-  [ -f "$skill_md" ] || continue
-
-  # Extract name from frontmatter
-  name=$(grep -m1 "^name:" "$skill_md" 2>/dev/null | sed 's/^name: *//' | tr -d '"' | tr -d "'")
-  if [ -z "$name" ]; then
-    name=$(basename "$skill_dir")
-  fi
-
-  # Extract description from frontmatter
-  desc=$(grep -m1 "^description:" "$skill_md" 2>/dev/null | sed 's/^description: *//' | tr -d '"' | tr -d "'" | cut -c1-120)
-  if [ -z "$desc" ]; then
-    desc="(nincs leírás)"
-  fi
-
-  echo "| \`$name\` | $desc |" >> "$OUTPUT"
-  SKILL_COUNT=$((SKILL_COUNT + 1))
-done
-
-echo "" >> "$OUTPUT"
-echo "_${SKILL_COUNT} skill indexelve. Generálva: $(date '+%Y-%m-%d %H:%M')_" >> "$OUTPUT"
-
-echo "Skill index generated: $OUTPUT ($SKILL_COUNT skills)"
+# --- 2) Ágensenkénti index = globális + az adott ágens lokális skilljei ---
+if [ -d "$AGENTS_DIR" ]; then
+  for agent_skills in "$AGENTS_DIR"/*/.claude/skills; do
+    [ -d "$agent_skills" ] || continue
+    agent_name=$(basename "$(dirname "$(dirname "$agent_skills")")")
+    OUT="$agent_skills/.skill-index.md"
+    {
+      echo "# Skill Index — ${agent_name} (Level 0)"
+      echo ""
+      echo "Az elérhető skilljeid: a GLOBÁLIS (flotta-szintű) skillek + a SAJÁT ágens-lokális skilljeid."
+      echo "Más ágens lokális skilljeit nem látod. Lokálisat (agents/${agent_name}/.claude/skills/) szabadon"
+      echo "hozhatsz létre/patchelhetsz; globálisat (~/.claude/skills/) csak NEXUS-jóváhagyással."
+      echo ""
+      echo "## Globális skillek (~/.claude/skills/)"
+      echo ""
+      echo "| Skill | Leírás |"
+      echo "|-------|--------|"
+    } > "$OUT"
+    GCOUNT=$(emit_skill_table "$GLOBAL_SKILLS_DIR" "$OUT")
+    {
+      echo ""
+      echo "## Saját lokális skillek (agents/${agent_name}/.claude/skills/)"
+      echo ""
+      echo "| Skill | Leírás |"
+      echo "|-------|--------|"
+    } >> "$OUT"
+    LCOUNT=$(emit_skill_table "$agent_skills" "$OUT")
+    if [ "$LCOUNT" -eq 0 ]; then
+      echo "| _(nincs lokális skill)_ | |" >> "$OUT"
+    fi
+    {
+      echo ""
+      echo "_${GCOUNT} globális + ${LCOUNT} lokális skill. Generálva: $(date '+%Y-%m-%d %H:%M')_"
+    } >> "$OUT"
+    echo "Agent skill index: $OUT (${GCOUNT} global + ${LCOUNT} local)"
+  done
+fi

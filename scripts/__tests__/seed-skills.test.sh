@@ -43,11 +43,30 @@ else
   fail "expected >= 3 skills, got $SEED_NEW"
 fi
 
-for name in ai-fleet-project-execution channel-plugin-duplicate-socket github-pr-rebase-merge; do
+for name in ai-fleet-project-execution handoff retrospective; do
   if [ -f "$SKILLS_TARGET/$name/SKILL.md" ]; then
     pass "$name/SKILL.md exists"
   else
     fail "$name/SKILL.md missing"
+  fi
+done
+
+# --- Test 1b: agent-local seed skills live under seed-agents/<agent>/.claude/skills ---
+# (two-tier skill model #7d64eea2): agent-specific skills are seeded into the agent's
+# own .claude/skills, not the global seed-skills/ namespace.
+echo ""
+echo "Test 1b: agent-specific skills migrated out of global seed-skills"
+for pair in "argus:argus-youtube-watch" "forge:github-pr-rebase-merge" "relay:channel-plugin-duplicate-socket"; do
+  a="${pair%%:*}"; s="${pair##*:}"
+  if [ -f "$INSTALL_DIR/seed-agents/$a/.claude/skills/$s/SKILL.md" ]; then
+    pass "$a local seed skill $s present"
+  else
+    fail "$a local seed skill $s MISSING"
+  fi
+  if [ -d "$SEED_SKILLS_DIR/$s" ]; then
+    fail "$s should NOT remain in global seed-skills/"
+  else
+    pass "$s removed from global seed-skills/"
   fi
 done
 
