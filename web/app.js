@@ -369,6 +369,7 @@ function renderActivity(entries) {
 // ============================================================
 
 let kanbanCards = []
+let kanbanArchiveView = false
 let kanbanAssignees = []
 let kanbanProjects = []
 let kanbanProjectFilter = ''
@@ -401,6 +402,14 @@ document.querySelectorAll('.kanban-add-btn').forEach((btn) => {
 
 async function loadKanban() {
   try {
+    if (kanbanArchiveView) {
+      const cardsRes = await fetch('/api/kanban?archived=true')
+      kanbanCards = await cardsRes.json()
+      renderKanbanArchive()
+      return
+    }
+    const board = document.getElementById('kanbanBoard'); if (board) board.hidden = false
+    const archEl = document.getElementById('kanbanArchiveList'); if (archEl) archEl.hidden = true
     const [cardsRes, assigneesRes, projectsRes] = await Promise.all([
       fetch('/api/kanban'),
       fetch('/api/kanban/assignees'),
@@ -447,6 +456,8 @@ document.getElementById('kanbanProjectFilter').addEventListener('change', (e) =>
   kanbanProjectFilter = e.target.value
   renderKanban()
 })
+
+document.getElementById('kanbanArchiveToggle')?.addEventListener('click', toggleKanbanArchive)
 
 // The kanban "owner" is the assignee whose type is 'owner' -- the person the
 // board is primarily run for, on any deployment. Identified by type, never by
@@ -563,6 +574,40 @@ function renderKanban() {
 
   // Async parent-badge: fetch children count per card, show badge if any
   loadSubtaskBadges()
+}
+
+// Read-only archived-cards history (the kanban Archív view). Active board untouched.
+function renderKanbanArchive() {
+  const board = document.getElementById('kanbanBoard')
+  const list = document.getElementById('kanbanArchiveList')
+  if (board) board.hidden = true
+  if (!list) return
+  list.hidden = false
+  if (!kanbanCards.length) { list.innerHTML = '<div style="color:var(--text-muted);padding:32px;text-align:center">Nincs archivált kártya</div>'; return }
+  list.innerHTML = kanbanCards.map((card) => `
+    <div class="card" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px">${escapeHtml(card.title)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">#${card.seq ?? ''} · ${card.status} · ${escapeHtml(card.assignee || '—')} · archiválva: ${card.archived_at ? new Date(card.archived_at * 1000).toLocaleDateString('hu-HU') : '—'}${card.project ? ' · ' + escapeHtml(card.project) : ''}</div>
+      </div>
+      <button class="btn-secondary btn-compact" onclick="unarchiveCard('${card.id}')" style="font-size:11px">Visszaállítás</button>
+    </div>`).join('')
+}
+
+function toggleKanbanArchive() {
+  kanbanArchiveView = !kanbanArchiveView
+  const btn = document.getElementById('kanbanArchiveToggle')
+  if (btn) btn.textContent = kanbanArchiveView ? '← Aktív board' : 'Archív'
+  loadKanban()
+}
+
+async function unarchiveCard(id) {
+  try {
+    const res = await fetch(`/api/kanban/${id}/unarchive`, { method: 'POST' })
+    if (!res.ok) { showToast('Visszaállítás hiba'); return }
+    showToast('Kártya visszaállítva')
+    loadKanban()
+  } catch { showToast('Visszaállítás hiba') }
 }
 
 async function loadSubtaskBadges() {

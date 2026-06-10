@@ -1030,6 +1030,14 @@ export function listKanbanCards(): KanbanCard[] {
     .all() as KanbanCard[]
 }
 
+// Archived cards (history), newest-archived first. The active board (listKanbanCards)
+// keeps returning archived_at IS NULL, so the default view is unchanged.
+export function listArchivedKanbanCards(): KanbanCard[] {
+  return db
+    .prepare('SELECT rowid AS seq, * FROM kanban_cards WHERE archived_at IS NOT NULL ORDER BY archived_at DESC')
+    .all() as KanbanCard[]
+}
+
 export function listKanbanCardsSummary(): { status: string; title: string; assignee: string | null; priority: string; id: string }[] {
   return db
     .prepare("SELECT id, title, status, assignee, priority FROM kanban_cards WHERE archived_at IS NULL ORDER BY status, sort_order ASC")
@@ -1100,6 +1108,12 @@ export function markKanbanCardDispatched(id: string): boolean {
 export function archiveKanbanCard(id: string): boolean {
   const now = Math.floor(Date.now() / 1000)
   return db.prepare('UPDATE kanban_cards SET archived_at=?, updated_at=? WHERE id=?').run(now, now, id).changes > 0
+}
+
+// Restore an archived card back to the active board (archived_at = NULL).
+export function unarchiveKanbanCard(id: string): boolean {
+  const now = Math.floor(Date.now() / 1000)
+  return db.prepare('UPDATE kanban_cards SET archived_at=NULL, updated_at=? WHERE id=? AND archived_at IS NOT NULL').run(now, id).changes > 0
 }
 
 export function listKanbanProjects(): string[] {

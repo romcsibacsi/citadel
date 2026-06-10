@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
-  listKanbanCards, createKanbanCard, updateKanbanCard,
-  deleteKanbanCard, moveKanbanCard, archiveKanbanCard,
+  listKanbanCards, listArchivedKanbanCards, createKanbanCard, updateKanbanCard,
+  deleteKanbanCard, moveKanbanCard, archiveKanbanCard, unarchiveKanbanCard,
   getKanbanComments, addKanbanComment, listKanbanProjects,
   getKanbanCard, getChildCards, getDb,
   createAgentMessage, markKanbanCardDispatched,
@@ -56,9 +56,11 @@ function fireIdeaArchiveOnDone(cardId: string): void {
 }
 
 export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
-  const { req, res, path, method } = ctx
+  const { req, res, path, method, url } = ctx
 
   if (path === '/api/kanban' && method === 'GET') {
+    // ?archived=true -> archived history; default stays the active board (backward compat).
+    if (url.searchParams.get('archived') === 'true') { json(res, listArchivedKanbanCards()); return true }
     json(res, listKanbanCards())
     return true
   }
@@ -129,6 +131,15 @@ export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
     const id = decodeURIComponent(kanbanArchiveMatch[1])
     if (archiveKanbanCard(id)) { json(res, { ok: true }); return true }
     json(res, { error: 'Kártya nem található' }, 404)
+    return true
+  }
+
+  // Restore an archived card to the active board.
+  const kanbanUnarchiveMatch = path.match(/^\/api\/kanban\/([^/]+)\/unarchive$/)
+  if (kanbanUnarchiveMatch && method === 'POST') {
+    const id = decodeURIComponent(kanbanUnarchiveMatch[1])
+    if (unarchiveKanbanCard(id)) { json(res, { ok: true }); return true }
+    json(res, { error: 'Archivált kártya nem található' }, 404)
     return true
   }
 

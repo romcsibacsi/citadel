@@ -247,6 +247,7 @@
         <select id="kanbanProjectFilter" style="font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);min-width:140px;">
           <option value="">Mind</option>
         </select>
+        <button id="kanbanArchiveToggle" style="font-size:13px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);cursor:pointer;margin-left:auto;">Archív</button>
       </div>
       <div class="kanban-board" id="kanbanBoard">
         <div class="kanban-col" data-status="planned">
@@ -281,6 +282,7 @@
           <div class="kanban-col-body" data-status="done"></div>
         </div>
       </div>
+      <div id="kanbanArchiveList" hidden style="display:flex;flex-direction:column;gap:6px;"></div>
     </div>
 
     <!-- === Agents Page === -->
