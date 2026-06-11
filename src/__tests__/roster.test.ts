@@ -100,4 +100,22 @@ describe('new security profiles', () => {
       }
     }
   })
+
+  // Regression for the fleet-wide home-secret deny hardening (kártya #6a725e64):
+  // ${HOME}-anchored Read() deny rules (.ssh/.aws/.gnupg/.env) MUST use the
+  // fs-absolute // form. A single leading / is gitignore/project-root-relative in
+  // Claude Code, so Read(${HOME}/.ssh/**) silently never matches the real home
+  // path and the secret deny is inert. Empirically verified on the installed CLI:
+  // // (and ///) block; a single / does not.
+  it('home-secret deny rules are fs-absolute (// form), not inert single-/', () => {
+    for (const f of readdirSync(PROFILES_DIR).filter((x) => x.endsWith('.json'))) {
+      const p = JSON.parse(readFileSync(join(PROFILES_DIR, f), 'utf-8'))
+      const deny: string[] = p.filesystem?.deny ?? []
+      for (const rule of deny) {
+        if (/^Read\(\/*\$\{HOME\}\/\.(ssh|aws|gnupg|env)/.test(rule)) {
+          expect(rule.startsWith('Read(//${HOME}')).toBe(true)
+        }
+      }
+    }
+  })
 })
