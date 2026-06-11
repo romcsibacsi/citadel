@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseKumaMetrics, statusFromValue, buildUserMonitors, dockerStateToStatus,
-  userFacingTokens, slug,
+  userFacingTokens, mappedDockerNames, slug,
 } from '../web/routes/homelab.js'
 
 const METRICS = [
@@ -94,5 +94,22 @@ describe('userFacingTokens / slug', () => {
   it('slug normalizes a monitor name to an id', () => {
     expect(slug('Mailcow SMTP')).toBe('mailcow-smtp')
     expect(slug('Serviio (DLNA)')).toBe('serviio-dlna')
+  })
+})
+
+describe('mappedDockerNames', () => {
+  it('collects lowercased docker_name fields for precise internal dedup', () => {
+    const m = {
+      Plex: { display: 'Plex', group: 'media', webui_url: null, port: 1, docker_name: 'Plex-Server' },
+      NPM: { display: 'NPM', group: 'infra', webui_url: null, port: 2, docker_name: 'nginx-proxy-manager-app-1' },
+      Dash: { display: 'Dash', group: 'monitoring', webui_url: null, port: 3, docker_name: null },
+    } as any
+    const s = mappedDockerNames(m)
+    expect(s.has('plex-server')).toBe(true)
+    expect(s.has('nginx-proxy-manager-app-1')).toBe(true)
+    expect(s.size).toBe(2) // the null docker_name (host node-process) is excluded
+  })
+  it('is empty when the map predates docker_name (caller uses token fallback)', () => {
+    expect(mappedDockerNames(MAP).size).toBe(0)
   })
 })

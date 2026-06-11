@@ -31,7 +31,7 @@ export interface HomelabMonitor {
   latency_ms: number | null
 }
 
-interface MapEntry { display: string; group: string; webui_url: string | null; port: number }
+interface MapEntry { display: string; group: string; webui_url: string | null; port: number; docker_name?: string | null }
 interface HomelabMap {
   _meta?: { status_endpoint?: string; group_order?: string[] }
   monitors: Record<string, MapEntry>
@@ -149,6 +149,18 @@ export function userFacingTokens(mapMonitors: Record<string, MapEntry>): Set<str
   return t
 }
 
+// Exact docker-container names the map associates with a user-facing monitor
+// (RELAY's optional docker_name field). When present this gives a PRECISE internal
+// dedup (docker ps minus the 31 docker_names); empty when the map predates the
+// field, in which case the caller falls back to the fuzzy token match above.
+export function mappedDockerNames(mapMonitors: Record<string, MapEntry>): Set<string> {
+  const s = new Set<string>()
+  for (const e of Object.values(mapMonitors)) {
+    if (e.docker_name) s.add(String(e.docker_name).toLowerCase())
+  }
+  return s
+}
+
 // ---------------------------------------------------------------------------
 // I/O + cache.
 // ---------------------------------------------------------------------------
@@ -184,16 +196,21 @@ function dockerInternal(mapMonitors: Record<string, MapEntry>): HomelabMonitor[]
   } catch {
     return []  // docker unavailable / no perms -> simply no internal group
   }
-  const tokens = userFacingTokens(mapMonitors)
+  // Precise dedup when the map carries docker_name (RELAY); else fuzzy token match.
+  const dockerNames = mappedDockerNames(mapMonitors)
+  const tokens = dockerNames.size > 0 ? null : userFacingTokens(mapMonitors)
   const monitors: HomelabMonitor[] = []
   for (const line of out.split('\n')) {
     if (!line.trim()) continue
     const [name, state] = line.split('\t')
     if (!name) continue
     const lname = name.toLowerCase()
-    let mapped = false
-    for (const t of tokens) { if (lname.includes(t)) { mapped = true; break } }
-    if (mapped) continue
+    if (dockerNames.has(lname)) continue
+    if (tokens) {
+      let mapped = false
+      for (const t of tokens) { if (lname.includes(t)) { mapped = true; break } }
+      if (mapped) continue
+    }
     monitors.push({
       id: 'internal-' + slug(name), name, display: name, group: 'internal',
       status: dockerStateToStatus(state), has_webui: false, url: null, host: name,
