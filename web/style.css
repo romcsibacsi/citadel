@@ -285,6 +285,16 @@ nav { display: flex; gap: 4px; }
   padding: 1px 7px;
   border-radius: 4px;
 }
+/* #ec737f86: interactive approve/reject buttons on a flagged kanban card. */
+.kanban-card-approval-actions { display: flex; gap: 6px; margin-top: 8px; }
+.kanban-approve-btn, .kanban-reject-btn {
+  font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; border: 1px solid transparent; line-height: 1.4;
+}
+.kanban-approve-btn { background: var(--success-soft); color: var(--success); }
+.kanban-approve-btn:hover { background: var(--success); color: #fff; }
+.kanban-reject-btn { background: var(--danger-soft); color: var(--danger); }
+.kanban-reject-btn:hover { background: var(--danger); color: #fff; }
 
 .updates-summary {
   padding: 16px 18px;

@@ -682,10 +682,19 @@ function createCardEl(card) {
     ? `<span class="kanban-card-approval-badge" title="Operátori jóváhagyásra vár">⚠ jóváhagyás</span>`
     : ''
 
+  // #ec737f86: interactive approve/reject actions on a flagged card.
+  const approvalActionsHtml = card.requires_approval
+    ? `<div class="kanban-card-approval-actions">
+         <button type="button" class="kanban-approve-btn" data-act="approve">✓ Jóváhagyom</button>
+         <button type="button" class="kanban-reject-btn" data-act="reject" title="Elutasítom">✗</button>
+       </div>`
+    : ''
+
   el.innerHTML = `
     ${projectHtml}
     <div class="kanban-card-title">${seqHtml}${escapeHtml(card.title)}</div>
     <div class="kanban-card-footer">${approvalHtml}${assigneeHtml}${dueHtml}</div>
+    ${approvalActionsHtml}
     <div class="kanban-subtask-badge" style="display:none"></div>
   `
 
@@ -700,7 +709,28 @@ function createCardEl(card) {
   // Click -> detail
   el.addEventListener('click', () => showCardDetail(card))
 
+  // #ec737f86: approve/reject buttons. stopPropagation so the click does not also
+  // open the card detail (the whole card opens showCardDetail on click).
+  if (card.requires_approval) {
+    el.querySelectorAll('.kanban-card-approval-actions button').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        decideCardApproval(card.id, btn.dataset.act)
+      })
+    })
+  }
+
   return el
+}
+
+// #ec737f86: send the operator's approve/reject decision, then refresh board + badge.
+async function decideCardApproval(id, decision) {
+  try {
+    const res = await fetch(`/api/kanban/${encodeURIComponent(id)}/${decision}`, { method: 'POST' })
+    if (!res.ok) return
+    await loadKanban()
+    pollApprovalBadge()
+  } catch {}
 }
 
 // === Drag & Drop ===

@@ -144,6 +144,30 @@ export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
     return true
   }
 
+  // needs-approval v2 (#ec737f86): operator approves/rejects a card parked on
+  // their decision. Lowers requires_approval (badge clears), records who/when as a
+  // comment, and signals NEXUS so it can continue. The button ONLY lowers the flag
+  // + signals -- it never starts the (possibly dangerous) work itself; the
+  // responsible agent/NEXUS does that.
+  const kanbanApprovalMatch = path.match(/^\/api\/kanban\/([^/]+)\/(approve|reject)$/)
+  if (kanbanApprovalMatch && method === 'POST') {
+    const id = decodeURIComponent(kanbanApprovalMatch[1])
+    const decision = kanbanApprovalMatch[2]
+    const card = getKanbanCard(id)
+    if (!card) { json(res, { error: 'Kártya nem található' }, 404); return true }
+    updateKanbanCard(id, { requires_approval: 0 })
+    const who = OWNER_NAME || 'Operátor'
+    if (decision === 'approve') {
+      addKanbanComment(id, who, '✓ Jóváhagyva (dashboard).')
+      createAgentMessage('operator', MAIN_AGENT_ID, `Az operátor JÓVÁHAGYTA a(z) "${card.title}" (#${id}) kártyát — folytatható.`)
+    } else {
+      addKanbanComment(id, who, '✗ Elutasítva (dashboard).')
+      createAgentMessage('operator', MAIN_AGENT_ID, `Az operátor ELUTASÍTOTTA a(z) "${card.title}" (#${id}) kártyát — ne folytasd.`)
+    }
+    json(res, { ok: true })
+    return true
+  }
+
   const kanbanArchiveMatch = path.match(/^\/api\/kanban\/([^/]+)\/archive$/)
   if (kanbanArchiveMatch && method === 'POST') {
     const id = decodeURIComponent(kanbanArchiveMatch[1])
