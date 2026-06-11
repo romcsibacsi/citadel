@@ -1,5 +1,5 @@
 {
-  "schedule": "30 7 * * *",
+  "schedule": "0 5 * * *",
   "agent": "nexus",
   "enabled": true,
   "type": "task",
