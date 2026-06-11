@@ -26,6 +26,7 @@ const EXPECTED = {
   prism: { profile: 'researcher', accent: '#6366f1' },
   probe: { profile: 'developer-junior', accent: '#ef4444' },
   harbor: { profile: 'developer-senior', accent: '#0ea5e9' },
+  archivist: { profile: 'archivist', accent: '#a16207' },
 } as const
 
 const MAIN_AGENT_ID = 'nexus'
@@ -35,7 +36,7 @@ function readConfig(name: string): Record<string, any> {
 }
 
 describe('seed-agents roster', () => {
-  it('contains exactly the 13 expected sub-agent dirs (NEXUS excluded)', () => {
+  it('contains exactly the 14 expected sub-agent dirs (NEXUS excluded)', () => {
     const dirs = readdirSync(SEED_DIR).filter((f) => statSync(join(SEED_DIR, f)).isDirectory())
     expect(dirs.sort()).toEqual(Object.keys(EXPECTED).sort())
     expect(dirs).not.toContain(MAIN_AGENT_ID)

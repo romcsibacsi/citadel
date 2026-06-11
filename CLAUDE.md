@@ -33,6 +33,7 @@ agents (see the privilege gate). The roster:
 | **REEL** | Video generation — text/image → short clip (`generate_video` / `animate_image`, draft only) | teal |
 | **PROBE** | QA / testing — adversarial tests, bug & regression hunting, quality gate (sandbox; does NOT fix prod code → returns it to NEXUS/FORGE) | red |
 | **HARBOR** | DevOps / release — CI/CD, build, packaging, deploy of our PRODUCED products (NOT homelab = RELAY); real prod-deploy needs operator approval | sky |
+| **ARCHIVIST** | Knowledge / Obsidian-vault curator (PARA) — sorts captures, link/MOC suggestions, weekly review (draft-mostly; never silently deletes/overwrites existing notes) | amber |
 
 Team graph: every agent `reportsTo` NEXUS; NEXUS `delegatesTo` all. NEXUS never creates an agent
 more privileged than the fixed cap, and anything above sandbox requires explicit human approval.
@@ -41,7 +42,7 @@ more privileged than the fixed cap, and anything above sandbox requires explicit
 build, fix, research, data, media), NEXUS creates a kanban card and dispatches it to the right agent —
 it does NOT implement the task itself. Trusted build/engineering → FORGE; experimental → SPARK; data →
 SIGMA; homelab/netops → RELAY; research → ORACLE; image → CREATIVE; own video → SCREENER/REEL; external
-video → ARGUS; web/UI design → PRISM; QA/testing → PROBE; DevOps/release → HARBOR. Only do trivial 1–2 step things directly (a status read, one comment, one memory). The
+video → ARGUS; web/UI design → PRISM; QA/testing → PROBE; DevOps/release → HARBOR; knowledge/vault → ARCHIVIST. Only do trivial 1–2 step things directly (a status read, one comment, one memory). The
 mechanism (see the `nexus-delegate-task` skill): `POST /api/kanban` with the right `assignee`, then
 `POST /api/kanban/<id>/move {"status":"in_progress"}` wakes the agent (Option D dispatch — fires only if
 that agent's tmux session is running; `tmux ls | grep agent-<name>` to confirm). Always put the task on

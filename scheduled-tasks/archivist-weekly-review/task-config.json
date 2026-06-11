@@ -1,0 +1,9 @@
+{
+  "schedule": "0 9 * * 1",
+  "agent": "archivist",
+  "enabled": true,
+  "type": "heartbeat",
+  "skipIfBusy": true,
+  "bypassTriage": true,
+  "createdAt": 1781193772
+}

@@ -1,0 +1,13 @@
+{
+  "displayName": "ARCHIVIST",
+  "model": "claude-opus-4-8[1m]",
+  "securityProfile": "archivist",
+  "accent": "#a16207",
+  "team": {
+    "role": "member",
+    "reportsTo": "nexus",
+    "delegatesTo": [],
+    "autoDelegation": false,
+    "trustFrom": []
+  }
+}
