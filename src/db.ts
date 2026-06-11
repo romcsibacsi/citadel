@@ -181,6 +181,14 @@ export function initDatabase(dbPathOverride?: string): void {
   } catch {
     // column already exists
   }
+  // Migration: add requires_approval to kanban_cards. 1 = the card is parked
+  // waiting on the OPERATOR's approval/decision (surfaced as a prominent
+  // dashboard badge); NULL/0 = not blocked. Additive, no backfill.
+  try {
+    db.exec('ALTER TABLE kanban_cards ADD COLUMN requires_approval INTEGER')
+  } catch {
+    // column already exists
+  }
   // Migration: add agent_id, category, auto_generated columns to memories
   try {
     db.exec("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'nexus'")
@@ -1009,6 +1017,9 @@ export interface KanbanCard {
   // is woken (kanban -> agent dispatch). NULL = never dispatched; the once-only
   // guard so re-dragging a card does not re-prompt the agent.
   dispatched_at: number | null
+  // 1 = the card is blocked waiting on the OPERATOR's approval/decision
+  // (drives the dashboard "needs your approval" badge). NULL/0 = not blocked.
+  requires_approval: number | null
 }
 
 export interface KanbanComment {
@@ -1058,6 +1069,7 @@ export function createKanbanCard(card: {
   project?: string
   parent_id?: string
   due_date?: number
+  requires_approval?: number
 }): void {
   const now = Math.floor(Date.now() / 1000)
   const status = card.status ?? 'planned'
@@ -1067,12 +1079,13 @@ export function createKanbanCard(card: {
   const sortOrder = (maxRow?.m ?? -1) + 1
 
   db.prepare(
-    `INSERT INTO kanban_cards (id, title, description, status, assignee, priority, project, parent_id, due_date, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO kanban_cards (id, title, description, status, assignee, priority, project, parent_id, due_date, sort_order, created_at, updated_at, requires_approval)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     card.id, card.title, card.description ?? null, status,
     card.assignee ?? null, card.priority ?? 'normal',
-    card.project ?? null, card.parent_id ?? null, card.due_date ?? null, sortOrder, now, now
+    card.project ?? null, card.parent_id ?? null, card.due_date ?? null, sortOrder, now, now,
+    card.requires_approval ?? null
   )
 }
 
@@ -1082,9 +1095,18 @@ export function updateKanbanCard(id: string, fields: Partial<Omit<KanbanCard, 'i
   const now = Math.floor(Date.now() / 1000)
   const f = { ...card, ...fields, updated_at: now }
   return db.prepare(
-    `UPDATE kanban_cards SET title=?, description=?, status=?, assignee=?, priority=?, project=?, parent_id=?, due_date=?, sort_order=?, updated_at=?, archived_at=?
+    `UPDATE kanban_cards SET title=?, description=?, status=?, assignee=?, priority=?, project=?, parent_id=?, due_date=?, sort_order=?, updated_at=?, archived_at=?, requires_approval=?
      WHERE id=?`
-  ).run(f.title, f.description, f.status, f.assignee, f.priority, f.project, f.parent_id, f.due_date, f.sort_order, f.updated_at, f.archived_at, id).changes > 0
+  ).run(f.title, f.description, f.status, f.assignee, f.priority, f.project, f.parent_id, f.due_date, f.sort_order, f.updated_at, f.archived_at, f.requires_approval ?? null, id).changes > 0
+}
+
+// Count active (non-archived) cards parked waiting on the operator's approval.
+// Drives the dashboard "needs your approval" badge.
+export function countApprovalsNeeded(): number {
+  const row = db.prepare(
+    'SELECT COUNT(*) AS c FROM kanban_cards WHERE requires_approval = 1 AND archived_at IS NULL'
+  ).get() as { c: number }
+  return row.c
 }
 
 export function getChildCards(parentId: string): KanbanCard[] {

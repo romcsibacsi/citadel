@@ -257,6 +257,35 @@ nav { display: flex; gap: 4px; }
 }
 .updates-badge[hidden] { display: none; }
 
+/* "Needs operator approval" signal (#a0011592): amber, to stay visually distinct
+   from the red updates badge. The sidebar count and the per-card badge share the
+   amber concept so the operator reads them as the same thing. */
+.approval-badge {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #e8920c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  vertical-align: middle;
+}
+.approval-badge[hidden] { display: none; }
+.kanban-card-approval-badge {
+  display: inline-block;
+  background: rgba(232, 146, 12, 0.14);
+  color: #b3700a;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+
 .updates-summary {
   padding: 16px 18px;
   border-radius: var(--radius);

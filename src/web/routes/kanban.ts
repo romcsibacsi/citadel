@@ -5,8 +5,9 @@ import {
   getKanbanComments, addKanbanComment, listKanbanProjects,
   getKanbanCard, getChildCards, getDb,
   createAgentMessage, markKanbanCardDispatched,
-  getIdeaByKanbanId, archiveIdea,
+  getIdeaByKanbanId, archiveIdea, countApprovalsNeeded,
 } from '../../db.js'
+import { notifyAlert } from '../../notify.js'
 import { OWNER_NAME, BOT_NAME, MAIN_AGENT_ID } from '../../config.js'
 import { listAgentNames, readAgentDisplayName } from '../agent-config.js'
 import { isAgentRunning } from '../agent-process.js'
@@ -83,11 +84,21 @@ export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
     return true
   }
 
+  // Count of cards parked waiting on the operator's approval (dashboard badge).
+  // Exact-path GET, placed before the /api/kanban/:id regex routes.
+  if (path === '/api/kanban/approvals' && method === 'GET') {
+    json(res, { count: countApprovalsNeeded() })
+    return true
+  }
+
   if (path === '/api/kanban' && method === 'POST') {
     const body = await readBody(req)
     const data = JSON.parse(body.toString())
     const id = randomUUID().slice(0, 8)
     createKanbanCard({ id, ...data })
+    if (data.requires_approval) {
+      notifyAlert(`[CITADEL] Jóváhagyásra vár: "${data.title ?? id}" — a Kanban táblán döntésedre vár.`).catch(() => {})
+    }
     json(res, { ok: true, id })
     return true
   }
@@ -97,7 +108,14 @@ export async function tryHandleKanban(ctx: RouteContext): Promise<boolean> {
     const id = decodeURIComponent(kanbanCardMatch[1])
     const body = await readBody(req)
     const data = JSON.parse(body.toString())
-    if (updateKanbanCard(id, data)) { json(res, { ok: true }); return true }
+    const before = getKanbanCard(id)
+    if (updateKanbanCard(id, data)) {
+      // One-shot ping only on the falsy->truthy transition into needs-approval.
+      if (data.requires_approval && !before?.requires_approval) {
+        notifyAlert(`[CITADEL] Jóváhagyásra vár: "${before?.title ?? id}" — a Kanban táblán döntésedre vár.`).catch(() => {})
+      }
+      json(res, { ok: true }); return true
+    }
     json(res, { error: 'Kártya nem található' }, 404)
     return true
   }

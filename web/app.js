@@ -677,10 +677,15 @@ function createCardEl(card) {
     ? `<span class="kanban-card-seq" style="font-family:monospace;font-size:11px;color:var(--muted);margin-right:5px">#${card.seq}</span>`
     : ''
 
+  // #a0011592: prominent badge when the card is parked waiting on operator approval.
+  const approvalHtml = card.requires_approval
+    ? `<span class="kanban-card-approval-badge" title="Operátori jóváhagyásra vár">⚠ jóváhagyás</span>`
+    : ''
+
   el.innerHTML = `
     ${projectHtml}
     <div class="kanban-card-title">${seqHtml}${escapeHtml(card.title)}</div>
-    <div class="kanban-card-footer">${assigneeHtml}${dueHtml}</div>
+    <div class="kanban-card-footer">${approvalHtml}${assigneeHtml}${dueHtml}</div>
     <div class="kanban-subtask-badge" style="display:none"></div>
   `
 
@@ -8153,6 +8158,27 @@ async function pollUpdatesBadge() {
   } catch {}
 }
 
+// #a0011592: "needs operator approval" sidebar count. Mirrors the updates badge.
+function renderApprovalBadge(count) {
+  const badge = document.getElementById('approvalBadge')
+  if (!badge) return
+  if (count && count > 0) {
+    badge.textContent = String(count)
+    badge.hidden = false
+  } else {
+    badge.hidden = true
+  }
+}
+
+async function pollApprovalBadge() {
+  try {
+    const res = await fetch('/api/kanban/approvals')
+    if (!res.ok) return
+    const data = await res.json()
+    renderApprovalBadge(data.count)
+  } catch {}
+}
+
 async function loadUpdates() {
   const summary = document.getElementById('updatesSummary')
   const list = document.getElementById('updatesCommitList')
@@ -8257,6 +8283,8 @@ document.getElementById('updatesApplyBtn').addEventListener('click', async () =>
 // the cached status even on tabs other than the Updates page.
 pollUpdatesBadge()
 setInterval(pollUpdatesBadge, 5 * 60_000)
+pollApprovalBadge()
+setInterval(pollApprovalBadge, 60_000)
 
 // === Init ===
 populateAvatarGrid()
