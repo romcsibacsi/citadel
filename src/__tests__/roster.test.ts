@@ -81,4 +81,22 @@ describe('new security profiles', () => {
     expect(Array.isArray(p.filesystem.deny)).toBe(true)
     expect(p.filesystem.deny.some((d: string) => /sudo/.test(d))).toBe(false)
   })
+
+  // Regression for the permission-prompt wedge (kártya #40c0cf1d): agents run with
+  // cwd = their own dir and write RELATIVE paths (e.g. "memory/x"), which do NOT
+  // match an absolute Write(${AGENT_DIR}/**) rule -> a prompt wedges the agent. Every
+  // profile that scopes Read/Write/Edit to ${AGENT_DIR} must ALSO allow the relative
+  // form (Write(**) etc.), which gitignore-anchors to the agent's dir (cannot escape
+  // to a parent, so per-agent filesystem isolation is preserved).
+  it('every ${AGENT_DIR}-scoped profile also allows the relative form (no relative-path wedge)', () => {
+    for (const f of readdirSync(PROFILES_DIR).filter((x) => x.endsWith('.json'))) {
+      const p = JSON.parse(readFileSync(join(PROFILES_DIR, f), 'utf-8'))
+      const allow: string[] = p.filesystem?.allow ?? []
+      for (const verb of ['Read', 'Write', 'Edit']) {
+        if (allow.some((a) => a.startsWith(`${verb}(\${AGENT_DIR}`))) {
+          expect(allow).toContain(`${verb}(**)`)
+        }
+      }
+    }
+  })
 })
