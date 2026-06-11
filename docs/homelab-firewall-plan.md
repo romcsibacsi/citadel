@@ -48,3 +48,17 @@ A LAN-subnetről (`192.168.1.0/24`, ill. ahonnan elérni kell) engedélyezni:
 - **Ráfordítás:** közepes; a fő kockázat a hiányos allow-lista (lásd a host-network portokat). A lockout-háló kezeli.
 - **Ha túl kockázatosnak ítéli az op:** a tűzfal helyett/előtt a **kitett admin/vault-portok LAN-bindje** (másik P1-kártya: code-server/portainer/mcp-* → `192.168.1.105`). Ez gyorsabb és kisebb kockázat, bár gyengébb (nem véd kompromittált LAN-eszköz ellen, és nem ad internet-deny réteget — azt a DOCKER-USER blokk + ufw adná).
 - **Ajánlás:** mivel a Docker-tudatos infrastruktúra (after.rules DOCKER-USER + ufw-docker) MÁR készen áll, a tűzfal bekapcsolása a kiegészített allow-listával + a lockout-hálóval **reális és nagy hozamú** — egy felügyelt ablakban. Ez a javasolt út.
+
+---
+
+## 5. VÉGREHAJTVA — 2026-06-12 (felügyelt ablak, op-GO) ✅
+
+A tűzfal **BEKAPCSOLVA és verifikálva**. A tervhez képest egy MÁSODIK gyökérokot is felfedtem a felügyelt ablakban:
+
+**2. gyökérok (a terv kihagyta):** a *arr-lánc (prowlarr→radarr/sonarr, *arr→qbittorrent) a **host-IP:porton** (192.168.1.105:7878/8989/8080) kommunikál (külön compose-hálók). Ez a forgalom a docker-proxyn át a host **INPUT**-láncára kerül, **docker-subnet forrással (172.x/10.x)** — amire nem volt INPUT-allow → DROP. Az első enable emiatt törte a *arr-kommot (és a NPM 443 hairpin-tesztet).
+
+**A fix (ami zöldre hozta):** a host-network portok engedélyezése MELLETT az **összes belső/RFC1918 forrás engedélyezése az INPUT-on**: `ufw allow from 10.0.0.0/8`, `from 172.16.0.0/12`, `from 192.168.0.0/16`. Ezzel: belső (LAN + docker + VPN) → mindent elér; internet (publikus IP) → default DROP, kivéve a szándékosan publikus szolgáltatásokat (mailcow 25/465/587/993, NPM 80/443, wireguard — saját 0.0.0.0/0 allow).
+
+**Verify (mind ZÖLD, ufw active):** *arr-komm (container→host-IP) 200, NPM 443 302, HA/Plex/Serviio/go2rtc 200, mailcow UI+SMTP, bridge *arr + dashboard 200, AdGuard DNS feloldás, SSH 33333. **Internet-blokk élőben igazolva** (UFW BLOCK log: internet-IP-k droppolva a 6881-en). ufw startup-enabled (reboot-álló).
+
+**Rollback:** `sudo ufw disable` (azonnal vissza). Lockout-háló (systemd-run auto-disable) használva a teszt alatt, sikeres verify után törölve.
