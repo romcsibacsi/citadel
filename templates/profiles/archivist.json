@@ -1,7 +1,7 @@
 {
   "id": "archivist",
   "label": "Archivist / vault-kurátor",
-  "description": "Tudás-kurátor: az Obsidian-vaultot (PARA) gondozza — capture-öket rendez, link/MOC-javaslatokat és heti review-t ír. Draft-mostly: szabadon OLVAS és ÚJ jegyzetet/indexet ÍR, de meglévő jegyzetet nem töröl/ír felül csendben. NEM nyúl a CITADEL-kódbázishoz, nincs kód-push. A vault user-adat, ezért a profil explicit és auditálható.",
+  "description": "Tudás-kurátor: az Obsidian-vaultot (PARA) gondozza — capture-öket rendez, link/MOC-javaslatokat és heti review-t ír. Draft-mostly: szabadon OLVAS és ÚJ jegyzetet/indexet ÍR, de meglévő jegyzetet nem töröl/ír felül csendben. NEM nyúl a CITADEL-kódbázishoz, nincs kód-push. A hard-delete (mcp__mcpvault__delete_note) tiltva: a törlés nála soft-delete (move a 99_Trash kukába), a végleges ürítés az operátoré. A vault user-adat, ezért a profil explicit és auditálható.",
   "permissionMode": "permissive",
   "filesystem": {
     "allow": [
@@ -30,7 +30,8 @@
       "Bash(rm:*)",
       "Bash(curl -X POST:*)",
       "Bash(git push:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "mcp__mcpvault__delete_note"
     ]
   }
 }
