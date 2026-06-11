@@ -1059,6 +1059,18 @@ export function getKanbanCard(id: string): KanbanCard | undefined {
   return db.prepare('SELECT rowid AS seq, * FROM kanban_cards WHERE id = ?').get(id) as KanbanCard | undefined
 }
 
+// The most-recently-updated active in_progress card for an assignee (matched
+// case-insensitively). Used by the permission-prompt wedge watcher (#3ef5844e)
+// to raise the needs-approval badge on the card a wedged agent is working.
+// Returns undefined when the agent has no in_progress card (then the watcher
+// only pings, never fabricates a card).
+export function getInProgressCardForAssignee(assignee: string): KanbanCard | undefined {
+  if (!assignee) return undefined
+  return db.prepare(
+    "SELECT rowid AS seq, * FROM kanban_cards WHERE archived_at IS NULL AND status = 'in_progress' AND lower(assignee) = lower(?) ORDER BY updated_at DESC LIMIT 1"
+  ).get(assignee) as KanbanCard | undefined
+}
+
 export function createKanbanCard(card: {
   id: string
   title: string

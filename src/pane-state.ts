@@ -969,3 +969,142 @@ export function decideStuckToolCallRecovery(
     next: { ...prev, lastSeconds: sig.seconds, stagnantPolls: nextStagnant, stagnantSince: nextStagnantSince, attempts: 1 },
   }
 }
+
+// =============================================================================
+// Permission-prompt WEDGE detector (kártya #3ef5844e)
+//
+// A delegated agent whose tmux session is stuck at a tool-permission confirm
+// dialog ("Do you want to create <file>? ❯ 1. Yes / 2. ... / 3. No", or
+// "Allow Bash(...)?") is NOT working -- it is parked waiting for a keypress.
+// None of the existing four monitors (thinking-block error, stuck-input,
+// stuck-tool-call, channel-health) recognise this shape. This pure detector
+// does, and is ALERT-only: the watcher raises the needs-approval badge + pings
+// the operator, never a key into the session (approving is a trust/scope
+// judgment for NEXUS/operator, per the agent-stuck-permission-prompt skill).
+//
+// Precision is everything (a false positive = a stale badge + a ping). The
+// signature gates on the SAME live-input-box discipline as the other
+// detectors, so a dialog quoted in scrollback (a log line, a watchdog report
+// body) is structurally invisible -- only a live menu in the current box
+// counts. Returns a stable signature (question + option labels, cursor-
+// agnostic) so the watcher can debounce on equality across cursor blinks.
+
+export function permissionPromptSignature(pane: string): string | null {
+  // A permission dialog renders inside the live input box with the idle
+  // footer visible (the turn is "paused" awaiting the key).
+  if (!IDLE_FOOTER_RX.test(pane)) return null
+  // A genuine mid-flight turn (spinner / esc-to-interrupt / pending paste) is
+  // never a wedge -- reuse the proven BUSY_INDICATORS rather than duplicate.
+  if (detectPaneState(pane) === 'busy') return null
+  const box = liveInputBox(pane)
+  if (box == null) return null
+  const lines = box.split('\n')
+  // (a) A question line ending in '?' -- the permission ask. Covers both
+  //     "Do you want to create <file>?" and "Allow Bash(...)?".
+  const questionLine = lines.find((l) => /\?\s*$/.test(l.trimEnd()))
+  if (questionLine === undefined) return null
+  // (b) A numbered option menu. The live Claude Code menu renders the '❯'
+  //     cursor on exactly ONE (the selected) row, so match the digits
+  //     cursor-agnostically (strip a leading "❯ " first). Row 1 affirmative,
+  //     the LAST row a negative/cancel -- a free-text draft that happens to
+  //     end in '?' has no such ordered, No-terminated menu.
+  const optRows = lines
+    .map((l) => l.replace(/^\s*❯\s*/, '').trim())
+    .filter((l) => /^\d+\.\s+\S/.test(l))
+  if (optRows.length < 2) return null
+  if (!/^1\.\s/.test(optRows[0])) return null
+  if (!/^\d+\.\s+(No|Don'?t|Deny|Cancel|Nem)\b/i.test(optRows[optRows.length - 1])) return null
+  // (c) At least one live cursor row in the box -- a live menu has a selection.
+  if (!lines.some((l) => /❯/.test(l))) return null
+  // Stable signature: question + labels, whitespace-collapsed so a cursor
+  // blink / terminal reflow does not read as a different prompt.
+  return [questionLine, ...optRows].join(' | ').replace(/\s+/g, ' ').trim()
+}
+
+export function detectsPermissionPrompt(pane: string): boolean {
+  return permissionPromptSignature(pane) !== null
+}
+
+export interface PermissionPromptAlertState {
+  /** Signature of the prompt for the current spell, or null when no spell. */
+  sig: string | null
+  /** When the current (same-signature) spell was first observed, or null. */
+  firstSeenAt: number | null
+  /** When the last alert was sent for this spell, or null if never. */
+  lastAlertAt: number | null
+  /** When the prompt was last observed -- keeps a spell alive across a brief
+   * null tick (a flapping capture) so the confirm window is not reset. */
+  lastSeenAt: number | null
+}
+
+export interface PermissionPromptAlertThresholds {
+  /** How long the SAME prompt must persist before the first alert. */
+  confirmMs: number
+  /** Minimum gap between repeat alerts within one unbroken spell. */
+  dedupMs: number
+  /** Continuous prompt-free time required to END a spell (flap tolerance). */
+  clearMs: number
+}
+
+export interface PermissionPromptAlertDecision {
+  alert: boolean
+  /** True on the tick a spell transitions active -> ended, so the watcher
+   * drops the badge it raised. */
+  clear: boolean
+  next: PermissionPromptAlertState
+}
+
+const NO_PERMISSION_PROMPT_STATE: PermissionPromptAlertState = {
+  sig: null, firstSeenAt: null, lastAlertAt: null, lastSeenAt: null,
+}
+
+/**
+ * Pure state machine for "should the monitor alert that this agent is wedged
+ * at a permission prompt". Dependency-free (no tmux/timers) so it is unit-
+ * testable: feed the current prompt signature (or null), the previous state
+ * and a clock, get the alert/clear decision plus the next state.
+ *
+ * ALERT-only (the watcher never presses a key). Guards that keep it quiet:
+ * the first sighting only records (>=2 observations before any alert), a
+ * confirm window (the SAME prompt must persist), a dedup window (one alert
+ * per spell, not per tick), and clearMs tolerance (a single null tick does
+ * not end a spell). A changed signature (a distinct prompt) restarts the
+ * window as a fresh episode. A future-dated stored timestamp (clock skew)
+ * restarts the spell rather than stalling on negative deltas.
+ */
+export function decidePermissionPromptAlert(
+  sig: string | null,
+  prev: PermissionPromptAlertState,
+  now: number,
+  thresholds: PermissionPromptAlertThresholds,
+): PermissionPromptAlertDecision {
+  if (sig === null) {
+    if (prev.firstSeenAt === null) {
+      return { alert: false, clear: false, next: { ...NO_PERMISSION_PROMPT_STATE } }
+    }
+    // Active spell: end only after sustained prompt-free time, so a single
+    // flapping null capture does not reset the confirm window. A future-dated
+    // lastSeenAt (clock skew) counts as "clear now".
+    const freeFor = prev.lastSeenAt === null ? Infinity : now - prev.lastSeenAt
+    if (freeFor >= thresholds.clearMs || freeFor < 0) {
+      return { alert: false, clear: true, next: { ...NO_PERMISSION_PROMPT_STATE } }
+    }
+    return { alert: false, clear: false, next: { ...prev } }
+  }
+  // New spell, or a different prompt now: restart the window, record only
+  // (fresh dedup). Guarantees >=2 observations before any alert.
+  if (prev.firstSeenAt === null || prev.sig !== sig) {
+    return { alert: false, clear: false, next: { sig, firstSeenAt: now, lastAlertAt: null, lastSeenAt: now } }
+  }
+  // Clock skew: a stored timestamp in the future would drive deltas negative.
+  if (now < prev.firstSeenAt || (prev.lastAlertAt !== null && now < prev.lastAlertAt)) {
+    return { alert: false, clear: false, next: { sig, firstSeenAt: now, lastAlertAt: null, lastSeenAt: now } }
+  }
+  if (now - prev.firstSeenAt < thresholds.confirmMs) {
+    return { alert: false, clear: false, next: { sig, firstSeenAt: prev.firstSeenAt, lastAlertAt: prev.lastAlertAt, lastSeenAt: now } }
+  }
+  if (prev.lastAlertAt !== null && now - prev.lastAlertAt < thresholds.dedupMs) {
+    return { alert: false, clear: false, next: { sig, firstSeenAt: prev.firstSeenAt, lastAlertAt: prev.lastAlertAt, lastSeenAt: now } }
+  }
+  return { alert: true, clear: false, next: { sig, firstSeenAt: prev.firstSeenAt, lastAlertAt: now, lastSeenAt: now } }
+}

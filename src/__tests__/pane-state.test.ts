@@ -10,6 +10,11 @@ import {
   stuckInputSignature,
   decideStuckInputRecovery,
   parkedChannelInput,
+  permissionPromptSignature,
+  detectsPermissionPrompt,
+  decidePermissionPromptAlert,
+  type PermissionPromptAlertState,
+  type PermissionPromptAlertThresholds,
 } from '../pane-state.js'
 
 // Realistic pane fixtures modelled on actual `tmux capture-pane -p`
@@ -1392,5 +1397,147 @@ describe('detectPaneState: esc-to-interrupt scoped to live footer region', () =>
       '  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt',
     ].join('\n')
     expect(detectPaneState(pane)).toBe('busy')
+  })
+})
+
+// === Permission-prompt WEDGE detector (#3ef5844e) ===
+const PP_FOOTER = '  ⏵⏵ bypass permissions on (shift+tab to cycle)'
+const PERM_WRITE = [
+  '',
+  '  I will create the file now.',
+  SEP,
+  '  Do you want to create foo.ts?',
+  '❯ 1. Yes',
+  '  2. Yes, allow all edits during this session',
+  '  3. No, and tell Claude what to do differently',
+  SEP,
+  PP_FOOTER,
+].join('\n')
+const PERM_BASH = [
+  '',
+  SEP,
+  '  Allow Bash(curl http://localhost:3420/api/messages)?',
+  '❯ 1. Yes',
+  "  2. Yes, and don't ask again",
+  '  3. No',
+  SEP,
+  PP_FOOTER,
+].join('\n')
+const PERM_CURSOR_ON_2 = [
+  '',
+  SEP,
+  '  Do you want to create foo.ts?',
+  '  1. Yes',
+  '❯ 2. Yes, allow all edits during this session',
+  '  3. No, and tell Claude what to do differently',
+  SEP,
+  PP_FOOTER,
+].join('\n')
+
+describe('permissionPromptSignature / detectsPermissionPrompt', () => {
+  it('detects a write-permission dialog (one cursor, question, No-terminated menu)', () => {
+    expect(detectsPermissionPrompt(PERM_WRITE)).toBe(true)
+    expect(permissionPromptSignature(PERM_WRITE)).toContain('Do you want to create foo.ts?')
+  })
+  it('detects a Bash-permission dialog (No as the last option)', () => {
+    expect(detectsPermissionPrompt(PERM_BASH)).toBe(true)
+  })
+  it('is cursor-agnostic: same labels -> same signature regardless of the ❯ row', () => {
+    expect(permissionPromptSignature(PERM_CURSOR_ON_2)).toBe(permissionPromptSignature(PERM_WRITE))
+  })
+
+  it('rejects a plain idle prompt (no question, no menu)', () => {
+    expect(detectsPermissionPrompt(IDLE_BYPASS)).toBe(false)
+  })
+  it('rejects a parked user draft that merely ends in "?" (no numbered menu)', () => {
+    const pane = ['', SEP, '❯ Do you want me to refactor this?', SEP, PP_FOOTER].join('\n')
+    expect(detectsPermissionPrompt(pane)).toBe(false)
+  })
+  it('rejects a busy turn even if it renders a numbered list (busy early-out)', () => {
+    const pane = [
+      '',
+      '  Combobulating… (52s · ↓ 2.6k tokens · esc to interrupt)',
+      SEP,
+      '  Do you want to proceed?',
+      '❯ 1. Yes',
+      '  3. No, and tell Claude what to do differently',
+      SEP,
+      '  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt',
+    ].join('\n')
+    expect(detectPaneState(pane)).toBe('busy')
+    expect(detectsPermissionPrompt(pane)).toBe(false)
+  })
+  it('rejects a dialog quoted in scrollback above the live (empty) input box', () => {
+    const pane = [
+      '  Do you want to create foo.ts?',
+      '❯ 1. Yes',
+      '  3. No, and tell Claude what to do differently',
+      SEP,
+      '❯ ',
+      SEP,
+      PP_FOOTER,
+    ].join('\n')
+    expect(detectsPermissionPrompt(pane)).toBe(false)
+  })
+  it('rejects a numbered list with no question line', () => {
+    const pane = ['', SEP, '  1. First', '  2. Second', '  3. Third', SEP, PP_FOOTER].join('\n')
+    expect(detectsPermissionPrompt(pane)).toBe(false)
+  })
+  it('rejects a menu whose last option is not a negative/cancel', () => {
+    const pane = ['', SEP, '  Do you want to proceed?', '❯ 1. Yes', '  2. Yes, and continue', SEP, PP_FOOTER].join('\n')
+    expect(detectsPermissionPrompt(pane)).toBe(false)
+  })
+  it('null-safe on an empty capture', () => {
+    expect(permissionPromptSignature('')).toBeNull()
+    expect(detectsPermissionPrompt('')).toBe(false)
+  })
+})
+
+describe('decidePermissionPromptAlert', () => {
+  const TH: PermissionPromptAlertThresholds = { confirmMs: 90_000, dedupMs: 1_800_000, clearMs: 30_000 }
+  const NONE: PermissionPromptAlertState = { sig: null, firstSeenAt: null, lastAlertAt: null, lastSeenAt: null }
+  const SIG = 'Do you want to create foo.ts? | 1. Yes | 3. No'
+
+  it('first sighting records only, never alerts (>=2 observations)', () => {
+    const d = decidePermissionPromptAlert(SIG, NONE, 1_000, { ...TH, confirmMs: 0 })
+    expect(d.alert).toBe(false)
+    expect(d.next.firstSeenAt).toBe(1_000)
+  })
+  it('does not alert before the confirm window, alerts once after', () => {
+    const seen = decidePermissionPromptAlert(SIG, NONE, 0, TH).next
+    expect(decidePermissionPromptAlert(SIG, seen, 50_000, TH).alert).toBe(false)
+    const d = decidePermissionPromptAlert(SIG, seen, 95_000, TH)
+    expect(d.alert).toBe(true)
+    expect(d.next.lastAlertAt).toBe(95_000)
+  })
+  it('dedups repeat alerts within dedupMs, re-alerts after', () => {
+    const fired = decidePermissionPromptAlert(SIG, decidePermissionPromptAlert(SIG, NONE, 0, TH).next, 95_000, TH).next
+    expect(decidePermissionPromptAlert(SIG, fired, 95_000 + 60_000, TH).alert).toBe(false)
+    expect(decidePermissionPromptAlert(SIG, fired, 95_000 + 1_800_001, TH).alert).toBe(true)
+  })
+  it('a changed signature restarts the confirm window (distinct prompt = new episode)', () => {
+    const fired = decidePermissionPromptAlert(SIG, decidePermissionPromptAlert(SIG, NONE, 0, TH).next, 95_000, TH).next
+    const d = decidePermissionPromptAlert('Allow Bash(x)? | 1. Yes | 3. No', fired, 95_500, TH)
+    expect(d.alert).toBe(false)
+    expect(d.next.firstSeenAt).toBe(95_500)
+    expect(d.next.lastAlertAt).toBeNull()
+  })
+  it('tolerates a single null tick inside an active spell (clearMs not elapsed)', () => {
+    const seen = decidePermissionPromptAlert(SIG, NONE, 0, TH).next
+    const held = decidePermissionPromptAlert(null, seen, 10_000, TH)
+    expect(held.clear).toBe(false)
+    expect(held.next.firstSeenAt).toBe(0)
+  })
+  it('clears the spell after sustained prompt-free time', () => {
+    const seen = decidePermissionPromptAlert(SIG, NONE, 0, TH).next
+    const d = decidePermissionPromptAlert(null, seen, 40_000, TH)
+    expect(d.clear).toBe(true)
+    expect(d.next.firstSeenAt).toBeNull()
+  })
+  it('restarts on a future-dated stored timestamp (clock skew)', () => {
+    const future: PermissionPromptAlertState = { sig: SIG, firstSeenAt: 1_000_000, lastAlertAt: null, lastSeenAt: 1_000_000 }
+    const d = decidePermissionPromptAlert(SIG, future, 500_000, TH)
+    expect(d.alert).toBe(false)
+    expect(d.next.firstSeenAt).toBe(500_000)
   })
 })
