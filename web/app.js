@@ -752,6 +752,9 @@ function hlDominant(list) {
 }
 function hlRowHtml(m) {
   const label = `${m.display} — ${HL_STATUS_HU[m.status] || m.status}`
+  const desc = m.description ? String(m.description) : ''
+  const titleAttr = desc ? ` title="${escapeHtml(desc)}"` : '' // #03bed9b1: hover-tooltip
+  const ariaBase = desc ? `${label} — ${desc}` : label
   const meta = []
   if (m.uptime_24h != null) meta.push(`${(m.uptime_24h * 100).toFixed(1)}%`)
   if (m.latency_ms != null) meta.push(`${m.latency_ms}ms`)
@@ -761,9 +764,9 @@ function hlRowHtml(m) {
   const sr = `<span class="hl-sr-only">${escapeHtml(HL_STATUS_HU[m.status] || m.status)}</span>`
   const cls = `hl-row ${m.status === 'down' ? 'down' : m.status === 'restarting' ? 'restarting' : ''}`.trim()
   if (m.has_webui && m.url) {
-    return `<a class="${cls}" href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(label)} — megnyitás új fülön">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}<span class="hl-ext" aria-hidden="true">↗</span></a>`
+    return `<a class="${cls}"${titleAttr} href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(ariaBase)} — megnyitás új fülön">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}<span class="hl-ext" aria-hidden="true">↗</span></a>`
   }
-  return `<span class="${cls}" role="status" aria-label="${escapeHtml(label)} — nincs webUI">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}</span>`
+  return `<span class="${cls}"${titleAttr} role="status" aria-label="${escapeHtml(ariaBase)} — nincs webUI">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}</span>`
 }
 function hlRender() {
   const data = hlState.data

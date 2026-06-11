@@ -29,9 +29,10 @@ export interface HomelabMonitor {
   host: string
   uptime_24h: number | null
   latency_ms: number | null
+  description: string | null  // short blurb shown as a hover tooltip (from the map)
 }
 
-interface MapEntry { display: string; group: string; webui_url: string | null; port: number; docker_name?: string | null }
+interface MapEntry { display: string; group: string; webui_url: string | null; port: number; docker_name?: string | null; description?: string | null }
 interface HomelabMap {
   _meta?: { status_endpoint?: string; group_order?: string[] }
   monitors: Record<string, MapEntry>
@@ -117,13 +118,14 @@ export function buildUserMonitors(
       host: hostFor(e.webui_url, e.port),
       uptime_24h: null,
       latency_ms: lat != null && Number.isFinite(lat) ? Math.round(lat) : null,
+      description: e.description ?? null,
     })
   }
   if (!mapMonitors['Uptime Kuma']) {
     out.push({
       id: 'uptime-kuma', name: 'Uptime Kuma', display: 'Uptime Kuma', group: 'monitoring',
       status: kumaOk ? 'up' : 'down', has_webui: true, url: KUMA_UI, host: `${LAN_IP}:8102`,
-      uptime_24h: null, latency_ms: null,
+      uptime_24h: null, latency_ms: null, description: null,
     })
   }
   return out
@@ -214,7 +216,7 @@ function dockerInternal(mapMonitors: Record<string, MapEntry>): HomelabMonitor[]
     monitors.push({
       id: 'internal-' + slug(name), name, display: name, group: 'internal',
       status: dockerStateToStatus(state), has_webui: false, url: null, host: name,
-      uptime_24h: null, latency_ms: null,
+      uptime_24h: null, latency_ms: null, description: null,
     })
   }
   return monitors

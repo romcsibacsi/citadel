@@ -10,7 +10,7 @@
  * Registration is fail-soft from app.js; if anything here throws the app
  * still works as a plain online SPA.
  */
-const CACHE_VERSION = 'citadel-v3'
+const CACHE_VERSION = 'citadel-v4'
 const PRECACHE = [
   '/',
   '/index.html',

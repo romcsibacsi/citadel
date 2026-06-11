@@ -20,7 +20,7 @@ const METRICS = [
 ].join('\n')
 
 const MAP = {
-  Radarr: { display: 'Radarr', group: 'media', webui_url: 'http://192.168.1.105:7878/', port: 7878 },
+  Radarr: { display: 'Radarr', group: 'media', webui_url: 'http://192.168.1.105:7878/', port: 7878, description: 'Film-kezelő' },
   'Mailcow SMTP': { display: 'Mailcow SMTP', group: 'mail', webui_url: null, port: 25 },
 } as any
 
@@ -58,10 +58,12 @@ describe('buildUserMonitors', () => {
     expect(radarr.has_webui).toBe(true)
     expect(radarr.url).toBe('http://192.168.1.105:7878/')
     expect(radarr.latency_ms).toBe(42)
+    expect(radarr.description).toBe('Film-kezelő') // map description passes through
     const smtp = mons.find((m) => m.name === 'Mailcow SMTP')!
     expect(smtp.has_webui).toBe(false)
     expect(smtp.url).toBeNull()
     expect(smtp.status).toBe('unknown') // not in metrics
+    expect(smtp.description).toBeNull() // no description in the map -> null
     const kuma = mons.find((m) => m.name === 'Uptime Kuma')!
     expect(kuma.group).toBe('monitoring')
     expect(kuma.status).toBe('up')
