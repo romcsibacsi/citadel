@@ -1669,6 +1669,10 @@ function getAvatarGradient(name) {
 const CITADEL_BASE_ACCENTS = {
   nexus: '#22d3ee', forge: '#f59e0b', spark: '#facc15', sigma: '#8b5cf6',
   relay: '#3b82f6', screener: '#22c55e', oracle: '#d4af37',
+  // 8 new fleet agents (#96139671): canonical accents so agentPortrait/agentGlyph/
+  // agentAccent resolve /portraits/<n>.png + /glyphs/<n>.png for all 15 (NEXUS + 14 subs).
+  creative: '#ec4899', argus: '#f59e0b', muse: '#a855f7', reel: '#14b8a6',
+  prism: '#6366f1', probe: '#ef4444', harbor: '#0ea5e9', archivist: '#a16207',
 }
 const CITADEL_NEUTRAL_ACCENT = '#9B79FF' // matches themes.css --ac default
 function agentBaseKey(name) {
