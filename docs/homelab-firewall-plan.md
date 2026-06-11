@@ -62,3 +62,31 @@ A tűzfal **BEKAPCSOLVA és verifikálva**. A tervhez képest egy MÁSODIK gyök
 **Verify (mind ZÖLD, ufw active):** *arr-komm (container→host-IP) 200, NPM 443 302, HA/Plex/Serviio/go2rtc 200, mailcow UI+SMTP, bridge *arr + dashboard 200, AdGuard DNS feloldás, SSH 33333. **Internet-blokk élőben igazolva** (UFW BLOCK log: internet-IP-k droppolva a 6881-en). ufw startup-enabled (reboot-álló).
 
 **Rollback:** `sudo ufw disable` (azonnal vissza). Lockout-háló (systemd-run auto-disable) használva a teszt alatt, sikeres verify után törölve.
+
+---
+
+## 6. VÉGLEGES MŰKÖDŐ KONFIG (op telefonon end-to-end igazolva) ✅✅
+
+**3. iteráció — a VPN-FORWARD volt a 2. rejtett rés.** Az 5.§ enable után az operátor jelezte: a VPN-tunnel CSATLAKOZIK (UDP INPUT 51821 OK), DE a VPN-kliens (10.0.0.x) nem érte el a belső hálót → ez a **FORWARD-lánc** hiánya volt (az INPUT-allow nem fedi a forwardot). A WireGuard-konténer masquerade-eli a klienseket (10.0.0.x → 172.25.0.2).
+
+**A teljes, reprodukálható allow-lista (ufw active, startup-enabled):**
+
+1. **INPUT (host + host-network + internet-facing):**
+   - SSH: `allow 33333/tcp` (aktív) + `22/tcp`.
+   - Belső/trusted források: `allow from 10.0.0.0/8` + `from 172.16.0.0/12` + `from 192.168.0.0/16` (LAN + docker-subnet + VPN — ez fedi a *arr container→host-IP kommot is).
+   - Host-network konténerek: `8123` (HA), `23423/23424/8895` + `1900/udp` (Serviio), `1984/8554/8555` (go2rtc), `32469/tcp` + `32410:32414/udp` (Plex), `3420` (dashboard).
+   - Internet-facing (0.0.0.0/0): mailcow `25/465/587/110/143/993/995/4190`, NPM `80/443`, **WireGuard `51821/udp`**, snmp, samba (LAN).
+2. **FORWARD (ufw route — a VPN-kliens forgalma a belső hálóra):**
+   - `ufw route allow from 10.0.0.0/24` (WG-peer subnet, pre-masq)
+   - `ufw route allow from 172.25.0.0/16` (WG-konténer subnet, post-masq) ← **EZ oldotta meg a VPN→LAN-t**
+   - `route:allow udp 51820 → 172.25.0.2` (ufw-docker, a WG-konténer DNAT-célja az internet-forrású tunnelhez)
+3. **DOCKER-USER (after.rules, ufw-docker — bridge-konténerek):** LAN/RFC1918-source RETURN (allow), internet-source NEW → DROP. Plusz `route:allow` a netre néző bridge-konténerekre (mailcow/NPM).
+4. **DEFAULT_INPUT_POLICY=DROP, DEFAULT_FORWARD_POLICY=ACCEPT.**
+
+**Posztúra:** belső (LAN + docker + VPN) → mindent elér (host, konténerek, egymás közt host-IP-n); internet → default DROP, kivéve a szándékos publikus szolgáltatások (mailcow/NPM/wireguard). Internet-blokk élőben igazolva (UFW BLOCK log).
+
+**Végső verify (mind ZÖLD):** *arr-komm ✅, NPM 443 ✅, host-network ✅, mailcow ✅, dashboard ✅, DNS ✅, SSH ✅, **WireGuard tunnel ✅ ÉS VPN→belső-háló ✅ (op telefonon megerősítve)**. ufw active + startup-enabled (reboot-álló).
+
+**Lockout-háló:** `systemd-run --on-active=600 --unit=ufw-autodisable /usr/sbin/ufw --force disable` (at hiányában); sikeres verify után `systemctl stop ufw-autodisable.timer`. **Rollback:** `sudo ufw disable`.
+
+**Caveat:** ha a wireguard konténert recreate-elik (IP-változás) → `sudo ufw-docker allow wireguard 51820/udp` + a route:allow IP frissítése.
