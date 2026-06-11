@@ -67,11 +67,22 @@ while IFS=$'\t' read -r name cur cand same; do
   # skip docker name-collision zombies (hex_-prefixed)
   case "$name" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]_*) log "skip zombie $name"; continue;; esac
 
-  # Only the full-auto SCOPE is ours to act on. MANUAL + out-of-scope (mailcow self-updates,
-  # unmanaged containers) are already covered by wud's OWN ntfy notification -> skip silently
-  # to avoid a card/notify storm.
-  if [ -z "${FULLAUTO_TEST[$name]:-}" ]; then
-    log "$name $cur->$cand: out of full-auto scope (MANUAL/unmanaged; wud ntfy covers it) — skip"
+  # Out of BOTH lists (mailcow self-updates, unmanaged containers) -> wud's own ntfy covers
+  # it; skip to avoid a card storm.
+  if [ -z "${FULLAUTO_TEST[$name]:-}" ] && ! in_manual "$name"; then
+    log "$name $cur->$cand: unmanaged (wud ntfy covers it) — skip"
+    continue
+  fi
+
+  # MANUAL list -> notify + card (deduped), NEVER auto-updated (own/safe update path).
+  if in_manual "$name"; then
+    seen="$SEEN_DIR/${name}@${cand}"
+    if [ -f "$seen" ]; then log "$name $cur->$cand: MANUAL — már jelezve, kihagyom"; continue; fi
+    log "$name $cur->$cand: MANUAL -> notify+card (nincs auto-csere)"
+    notify "Homelab kézi frissítés" "$name: $cur -> $cand. MANUAL lista (saját/biztonságos frissítési út). NEM auto-frissül." default
+    create_kanban_card "Homelab kézi frissítés: $name $cur->$cand" "wud új verziót jelez. Ez MANUAL (mailcow saját update.sh / Nextcloud-major occ / HA / DB-major adatformátum) — automatikus csere NÉLKÜL. Frissítsd a biztonságos úton. (Megj.: a wud jelölt-tag hibás match is lehet, pl. redis->32bit-stretch — előbb ellenőrizd/pinneld.)" "relay" "normal"
+    [ "$DRY_RUN" = "1" ] || echo "$(date '+%F %T')" > "$seen"
+    notified=$((notified+1))
     continue
   fi
 
