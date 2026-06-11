@@ -1381,30 +1381,22 @@
         <div class="page-header-row">
           <div>
             <h1>Homelab</h1>
-            <p class="subtitle">Gyors státusz-elérés a homelab monitoringhoz (LAN-only). A fő launcher továbbra is a Dashy.</p>
+            <p class="subtitle">Élő konténer-státusz · LAN-only · forrás: Uptime Kuma</p>
           </div>
         </div>
       </div>
-      <div class="homelab-grid">
-        <a class="homelab-card" href="http://192.168.1.105:8095" target="_blank" rel="noopener noreferrer">
-          <span class="homelab-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg></span>
-          <span class="homelab-card-body">
-            <span class="homelab-card-title">Beszel</span>
-            <span class="homelab-card-desc">Szerver-metrikák (CPU / RAM / lemez / hálózat)</span>
-            <span class="homelab-card-url">192.168.1.105:8095</span>
-          </span>
-          <span class="homelab-card-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg></span>
-        </a>
-        <a class="homelab-card" href="http://192.168.1.105:8102" target="_blank" rel="noopener noreferrer">
-          <span class="homelab-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
-          <span class="homelab-card-body">
-            <span class="homelab-card-title">Uptime Kuma</span>
-            <span class="homelab-card-desc">Uptime / elérhetőség-monitor</span>
-            <span class="homelab-card-url">192.168.1.105:8102</span>
-          </span>
-          <span class="homelab-card-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg></span>
-        </a>
+      <div class="hl-healthbar" id="hlHealthbar" role="status" aria-live="polite">
+        <div class="hl-counts" id="hlCounts"></div>
+        <div class="hl-controls">
+          <div class="hl-filter" role="group" aria-label="Szűrő: minden vagy csak a hibás monitorok">
+            <button type="button" class="hl-seg active" id="hlFilterAll" aria-pressed="true">Mind</button>
+            <button type="button" class="hl-seg hl-seg-bad" id="hlFilterBad" aria-pressed="false">⚠ Csak a hibásak</button>
+          </div>
+          <span class="hl-refresh" id="hlRefresh"></span>
+          <button type="button" class="hl-refresh-btn" id="hlRefreshBtn" title="Frissítés most" aria-label="Frissítés most">⟳</button>
+        </div>
       </div>
+      <div class="hl-groups" id="hlGroups"></div>
     </div>
 
   </main>

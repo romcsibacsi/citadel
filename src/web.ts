@@ -43,6 +43,7 @@ import { tryHandleBackgroundTasks, sweepOrphanedBackgroundTasks } from './web/ro
 import { tryHandleOverview } from './web/routes/overview.js'
 import { tryHandleUpdates } from './web/routes/updates.js'
 import { tryHandleStatus } from './web/routes/status.js'
+import { tryHandleHomelab } from './web/routes/homelab.js'
 import { tryHandleAutonomy } from './web/routes/autonomy.js'
 import { tryHandleIdeas } from './web/routes/ideas.js'
 import { tryHandleToolLog } from './web/routes/tool-log.js'
@@ -153,6 +154,7 @@ export function startWebServer(port = 3420): http.Server {
       if (await tryHandleOverview(routeCtx)) return
       if (await tryHandleUpdates(routeCtx)) return
       if (await tryHandleStatus(routeCtx)) return
+      if (await tryHandleHomelab(routeCtx)) return
       if (await tryHandleAutonomy(routeCtx)) return
       if (await tryHandleIdeas(routeCtx)) return
       if (await tryHandleToolLog(routeCtx)) return

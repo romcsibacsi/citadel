@@ -232,6 +232,8 @@ function switchPage(pageId) {
   // Activity page runs a live poll; stop it whenever we navigate away.
   if (pageId !== 'activity') stopActivityPoll()
   if (pageId === 'activity') startActivityPoll()
+  if (pageId !== 'homelab') stopHomelab()
+  if (pageId === 'homelab') startHomelab()
   if (pageId === 'overview') loadOverview()
   if (pageId === 'kanban') loadKanban()
   if (pageId === 'tasks') loadSchedules()
@@ -731,6 +733,125 @@ async function decideCardApproval(id, decision) {
     await loadKanban()
     pollApprovalBadge()
   } catch {}
+}
+
+// === Homelab LIVE status page (#df4429da, PRISM spec — Variant B + 15s refresh) ===
+const HL_GLYPH = { up: '●', down: '✕', restarting: '◐', unknown: '○' }
+const HL_STATUS_HU = { up: 'fent', down: 'lent', restarting: 'újraindul', unknown: 'ismeretlen' }
+const HL_GROUP_LABEL = { media: 'Media', mail: 'Mail', monitoring: 'Monitoring', web: 'Web / Apps', infra: 'Infra / Net', internal: 'Belső szolgáltatások' }
+const hlState = { filter: 'all', collapsed: new Set(['internal']), interval: null, data: null, wired: false }
+
+function hlGlyph(status) {
+  return `<span class="hl-glyph ${status}" aria-hidden="true">${HL_GLYPH[status] || '○'}</span>`
+}
+function hlDominant(list) {
+  if (list.some((m) => m.status === 'down')) return 'down'
+  if (list.some((m) => m.status === 'restarting')) return 'restarting'
+  if (list.length && list.every((m) => m.status === 'up')) return 'up'
+  return 'unknown'
+}
+function hlRowHtml(m) {
+  const label = `${m.display} — ${HL_STATUS_HU[m.status] || m.status}`
+  const meta = []
+  if (m.uptime_24h != null) meta.push(`${(m.uptime_24h * 100).toFixed(1)}%`)
+  if (m.latency_ms != null) meta.push(`${m.latency_ms}ms`)
+  else if (m.status === 'up') meta.push('ok')
+  else if (m.status === 'down') meta.push('le')
+  const metaHtml = meta.length ? `<span class="hl-meta">${escapeHtml(meta.join(' · '))}</span>` : ''
+  const sr = `<span class="hl-sr-only">${escapeHtml(HL_STATUS_HU[m.status] || m.status)}</span>`
+  const cls = `hl-row ${m.status === 'down' ? 'down' : m.status === 'restarting' ? 'restarting' : ''}`.trim()
+  if (m.has_webui && m.url) {
+    return `<a class="${cls}" href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(label)} — megnyitás új fülön">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}<span class="hl-ext" aria-hidden="true">↗</span></a>`
+  }
+  return `<span class="${cls}" role="status" aria-label="${escapeHtml(label)} — nincs webUI">${hlGlyph(m.status)}<span class="hl-name">${escapeHtml(m.display)}</span>${sr}${metaHtml}</span>`
+}
+function hlRender() {
+  const data = hlState.data
+  const countsEl = document.getElementById('hlCounts')
+  const groupsEl = document.getElementById('hlGroups')
+  const refreshEl = document.getElementById('hlRefresh')
+  if (!data || !countsEl || !groupsEl) return
+  const mons = data.monitors || []
+  const tally = { up: 0, down: 0, restarting: 0, unknown: 0 }
+  mons.forEach((m) => { tally[m.status] = (tally[m.status] || 0) + 1 })
+  countsEl.innerHTML = ['up', 'down', 'restarting', 'unknown']
+    .map((s) => `<span class="hl-count">${hlGlyph(s)}<b>${tally[s]}</b> ${HL_STATUS_HU[s]}</span>`).join('')
+  const stale = data.source_ok === false
+  if (refreshEl) {
+    const t = new Date((data.updated_at || 0) * 1000).toLocaleTimeString('hu-HU')
+    refreshEl.textContent = `${stale ? '⚠ kapcsolat · ' : ''}⟳ 15 mp · ${t}`
+    refreshEl.classList.toggle('stale', stale)
+  }
+  groupsEl.classList.toggle('stale', stale)
+  const order = data.group_order || ['media', 'mail', 'monitoring', 'web', 'infra', 'internal']
+  const byGroup = {}
+  mons.forEach((m) => { (byGroup[m.group] = byGroup[m.group] || []).push(m) })
+  const bad = hlState.filter === 'bad'
+  let html = ''
+  let anyShown = false
+  for (const g of order) {
+    const list = byGroup[g] || []
+    if (!list.length) continue
+    const shown = bad ? list.filter((m) => m.status !== 'up') : list
+    if (!shown.length) continue
+    anyShown = true
+    const collapsed = hlState.collapsed.has(g)
+    const upN = list.filter((m) => m.status === 'up').length
+    const bodyId = `hlBody-${g}`
+    html += `<div class="hl-card ${collapsed ? 'collapsed' : ''}" data-group="${escapeHtml(g)}">`
+      + `<button type="button" class="hl-card-head" aria-expanded="${!collapsed}" aria-controls="${bodyId}">`
+      + `<span class="hl-cat">${escapeHtml(HL_GROUP_LABEL[g] || g)}</span>`
+      + `<span class="hl-summary">${hlGlyph(hlDominant(list))} ${upN} / ${list.length}</span>`
+      + `<span class="hl-head-rule"></span><span class="hl-chevron" aria-hidden="true">▾</span></button>`
+      + `<div class="hl-card-body" id="${bodyId}">${shown.map(hlRowHtml).join('')}</div></div>`
+  }
+  if (!anyShown) html = `<div class="hl-empty">${bad ? '● Minden fent.' : 'Nincs adat.'}</div>`
+  groupsEl.innerHTML = html
+  groupsEl.querySelectorAll('.hl-card-head').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const g = btn.closest('.hl-card').dataset.group
+      if (hlState.collapsed.has(g)) hlState.collapsed.delete(g); else hlState.collapsed.add(g)
+      hlRender()
+    })
+  })
+}
+async function loadHomelab() {
+  if (document.hidden) return // PRISM §9: don't poll Kuma from a hidden tab
+  const refreshEl = document.getElementById('hlRefresh')
+  try {
+    const res = await fetch('/api/homelab/status')
+    if (!res.ok) throw new Error('http ' + res.status)
+    hlState.data = await res.json()
+    hlRender()
+  } catch {
+    // Keep last-known render; just flag the connection (PRISM §5.5).
+    if (refreshEl) { refreshEl.textContent = '⚠ kapcsolat'; refreshEl.classList.add('stale') }
+    const groupsEl = document.getElementById('hlGroups')
+    if (groupsEl) groupsEl.classList.add('stale')
+  }
+}
+function startHomelab() {
+  if (!hlState.wired) {
+    hlState.wired = true
+    const all = document.getElementById('hlFilterAll')
+    const badBtn = document.getElementById('hlFilterBad')
+    const refreshBtn = document.getElementById('hlRefreshBtn')
+    const setFilter = (f) => {
+      hlState.filter = f
+      if (all) { all.classList.toggle('active', f === 'all'); all.setAttribute('aria-pressed', String(f === 'all')) }
+      if (badBtn) { badBtn.classList.toggle('active', f === 'bad'); badBtn.setAttribute('aria-pressed', String(f === 'bad')) }
+      hlRender()
+    }
+    if (all) all.addEventListener('click', () => setFilter('all'))
+    if (badBtn) badBtn.addEventListener('click', () => setFilter('bad'))
+    if (refreshBtn) refreshBtn.addEventListener('click', loadHomelab)
+  }
+  loadHomelab()
+  stopHomelab()
+  hlState.interval = setInterval(loadHomelab, 15000)
+}
+function stopHomelab() {
+  if (hlState.interval) { clearInterval(hlState.interval); hlState.interval = null }
 }
 
 // === Drag & Drop ===

@@ -5554,3 +5554,71 @@ main {
 .homelab-card-url { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono, ui-monospace, monospace); margin-top: 5px; }
 .homelab-card-arrow { display: flex; color: var(--text-muted); flex-shrink: 0; }
 .homelab-card:hover .homelab-card-arrow { color: var(--accent); }
+
+/* === Homelab LIVE status page (#df4429da, PRISM spec — Variant B). All colours
+   are var(--*) tokens so it follows every theme; the DOWN glow uses color-mix on
+   var(--danger) (theme-correct) per the spec's "tokens only" rule. === */
+.hl-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+.hl-healthbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 20px;
+  position: sticky; top: 0; z-index: 5; backdrop-filter: blur(6px);
+}
+.hl-counts { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.hl-count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.hl-count b { font-weight: 600; color: var(--text); }
+.hl-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hl-filter { display: inline-flex; gap: 6px; }
+.hl-seg { border: 1px solid var(--border); background: transparent; color: var(--text-muted); border-radius: 20px; font-size: 11px; font-weight: 600; padding: 3px 10px; cursor: pointer; }
+.hl-seg.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.hl-seg-bad.active { background: var(--danger-soft); color: var(--danger); }
+.hl-refresh { font-size: 12px; font-family: var(--font-mono, ui-monospace, monospace); color: var(--text-muted); white-space: nowrap; }
+.hl-refresh.stale { color: var(--danger); }
+.hl-refresh-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
+.hl-refresh-btn:hover { color: var(--accent); }
+
+/* Status glyph: colour + SHAPE (●/✕/◐/○) + motion — never colour alone (a11y §6). */
+.hl-glyph { display: inline-block; width: 1em; text-align: center; line-height: 1; flex-shrink: 0; }
+.hl-glyph.up { color: var(--success); }
+.hl-glyph.down { color: var(--danger); animation: hl-pulse 1.8s ease-in-out infinite; text-shadow: 0 0 8px color-mix(in srgb, var(--danger) 55%, transparent); }
+.hl-glyph.restarting { color: var(--accent); animation: hl-spin 1s linear infinite; }
+.hl-glyph.unknown { color: var(--text-muted); }
+@keyframes hl-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes hl-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.hl-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.hl-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 14px 12px; }
+.hl-card-head { display: flex; align-items: center; gap: 10px; padding: 14px 0 8px; cursor: pointer; background: none; border: none; width: 100%; text-align: left; color: inherit; font: inherit; }
+.hl-card-head:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.hl-cat { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.hl-summary { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.hl-head-rule { flex: 1; height: 1px; background: var(--border); }
+.hl-chevron { color: var(--text-muted); transition: transform var(--transition); flex-shrink: 0; }
+.hl-card.collapsed .hl-chevron { transform: rotate(-90deg); }
+.hl-card.collapsed .hl-card-body { display: none; }
+
+.hl-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); text-decoration: none; color: var(--text); min-height: 30px; }
+a.hl-row:hover { background: var(--bg-card-hover); }
+a.hl-row:hover .hl-ext { opacity: 1; }
+.hl-row:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.hl-row.down { background: var(--danger-soft); box-shadow: inset 2px 0 0 var(--danger); }
+.hl-row.restarting { box-shadow: inset 2px 0 0 var(--accent); }
+.hl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.hl-meta { font-size: 11px; font-family: var(--font-mono, ui-monospace, monospace); color: var(--text-muted); white-space: nowrap; }
+.hl-ext { color: var(--text-muted); opacity: 0; flex-shrink: 0; transition: opacity var(--transition); }
+span.hl-row { cursor: default; }
+.hl-empty { text-align: center; color: var(--success); font-size: 14px; padding: 24px; }
+.hl-groups.stale { opacity: 0.5; }
+
+@media (max-width: 640px) {
+  .hl-healthbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .hl-groups { grid-template-columns: 1fr; }
+}
+@media (max-width: 400px) {
+  .hl-row .hl-meta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl-glyph.down, .hl-glyph.restarting { animation: none; }
+}
