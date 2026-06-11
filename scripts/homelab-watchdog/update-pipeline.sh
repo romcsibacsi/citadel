@@ -85,6 +85,16 @@ smoke_ok() {
   return 1
 }
 
+# Pause the recovery-watchdog for this container during the recreate + test window
+# so a planned restart is not mistaken for a crash (no false recovery/escalation).
+# The trap clears the pause on any exit (PASS, rollback, or error); the TTL is the
+# safety net if this script is hard-killed before the trap runs -- the watchdog
+# self-heals once it expires. Budget = pull/recreate margin + update test + rollback test.
+PIPELINE_PAUSE_TTL=$(( 600 + 2 * TEST_RETRIES * TEST_INTERVAL ))
+run maintenance_set "$CONTAINER" "$PIPELINE_PAUSE_TTL"
+trap 'maintenance_clear "$CONTAINER"' EXIT
+log "recovery-watchdog paused for $CONTAINER during update (TTL ${PIPELINE_PAUSE_TTL}s)"
+
 # 3) pin new tag + pull/recreate
 log "applying new tag: ${NEW_TAG:-<unspecified>}"
 apply_tag "$NEW_TAG"

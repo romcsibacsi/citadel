@@ -51,6 +51,16 @@ write_state() { echo "$2 $3 $4" > "$STATE_DIR/$1"; }
 log "run start (DRY_RUN=$DRY_RUN, ${#MANAGED[@]} managed containers)"
 
 for c in "${MANAGED[@]}"; do
+  # Maintenance-pause: a PLANNED stop (update-pipeline recreate / manual cutover)
+  # set a pause flag -> skip entirely (no start, no escalate). Reset the recovery
+  # state so that when the pause ends the container is re-evaluated fresh rather
+  # than carrying any pre-maintenance down/attempt count into an instant escalate.
+  if maintenance_active "$c"; then
+    log "$c under maintenance-pause ($(maintenance_remaining "$c")s left) — skipping (no recovery, no escalate)"
+    write_state "$c" 0 0 0
+    continue
+  fi
+
   if ! container_exists "$c"; then
     # Not even created -> a stopped compose service. Treat as down (recovery=up).
     health="absent"; down=1

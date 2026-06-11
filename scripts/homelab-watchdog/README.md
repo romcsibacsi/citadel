@@ -22,7 +22,9 @@ config (allowlist, commands, tests) is RELAY's to fill in `homelab-watchdog.conf
    it on a new version: `config-backup → pin new tag → pull + recreate → POST-UPDATE
    SMOKE TEST → PASS keeps / FAIL auto-rollbacks to the previous tag → always reports`.
    The **test is the gate**. The risky minority (mailcow, Nextcloud-major, Home Assistant,
-   DB-major) is on the **MANUAL** list → notify + card only, never auto-updated.
+   DB-major) is on the **MANUAL** list → notify + card only, never auto-updated. It
+   auto-**pauses** the recovery-watchdog for the container during the recreate window
+   (see *Maintenance-pause*) so a planned restart never triggers a false escalation.
 
 3. **`lib.sh`** — shared helpers (dry-run-aware `run`/`notify`/`create_kanban_card`,
    docker state readers). Secrets (NTFY/Telegram/dashboard token) come from the install
@@ -33,6 +35,24 @@ config (allowlist, commands, tests) is RELAY's to fill in `homelab-watchdog.conf
 
 5. **`../systemd/homelab-recovery-watchdog.{service,timer}`** — the timer units (ship
    DRY_RUN=1, **not enabled**).
+
+## Maintenance-pause (no false alarm on a planned stop)
+
+When a container is stopped **on purpose** (an update recreate, or hand maintenance),
+the recovery-watchdog must not mistake it for a crash. A per-container pause flag
+(`store/homelab-watchdog/maintenance/<container>`, content = the expiry epoch) makes the
+watchdog **skip** that container (no start, no escalate). The flag **auto-expires** after
+a TTL, so a pipeline that dies mid-op can never leave a container unwatched forever.
+
+- `update-pipeline.sh` sets it automatically around the recreate + test window and clears
+  it on any exit (PASS, rollback, or error).
+- For **manual** maintenance, use the CLI (`maintenance-pause.sh`):
+
+```bash
+scripts/homelab-watchdog/maintenance-pause.sh <container> [ttl_seconds]  # pause (default 1800s)
+scripts/homelab-watchdog/maintenance-pause.sh --resume <container>       # end the pause early
+scripts/homelab-watchdog/maintenance-pause.sh --list                     # show active pauses
+```
 
 ## Try it (dry-run — safe, mutates nothing)
 

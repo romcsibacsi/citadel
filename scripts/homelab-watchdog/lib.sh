@@ -79,3 +79,43 @@ container_exists() { docker inspect "$1" >/dev/null 2>&1; }
 container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]; }
 # health: "healthy" | "unhealthy" | "starting" | "none" (no healthcheck defined)
 container_health() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$1" 2>/dev/null; }
+
+# --- Maintenance-pause -------------------------------------------------------
+# A PLANNED container stop (update-pipeline recreate / manual cutover) drops a
+# per-container pause flag so the recovery-watchdog skips it (no start, no
+# escalate) instead of mistaking the deliberate stop for a crash. The flag is a
+# file whose content is the epoch second at which the pause EXPIRES, so a
+# pipeline that dies mid-op cannot leave a container permanently unwatched --
+# the watchdog self-heals once the TTL passes. These helpers are low-level
+# (always touch the flag file); callers gate them with `run` for DRY_RUN.
+MAINT_DIR="$INSTALL_DIR/store/homelab-watchdog/maintenance"
+
+# maintenance_set CONTAINER [TTL_SECONDS]  -- pause CONTAINER for TTL (default 1800).
+maintenance_set() {
+  local c="$1" ttl="${2:-1800}"
+  mkdir -p "$MAINT_DIR"
+  echo "$(( $(date +%s) + ttl ))" > "$MAINT_DIR/$c"
+}
+
+# maintenance_clear CONTAINER  -- end a pause early (op finished). Idempotent.
+maintenance_clear() { rm -f "$MAINT_DIR/$1" 2>/dev/null; }
+
+# maintenance_active CONTAINER  -- exit 0 if a non-expired pause flag exists.
+# An expired or malformed flag is removed (self-healing) and counts as not-paused.
+maintenance_active() {
+  local f="$MAINT_DIR/$1" exp
+  [ -f "$f" ] || return 1
+  exp="$(cat "$f" 2>/dev/null)"
+  case "$exp" in *[!0-9]*|'') rm -f "$f"; return 1 ;; esac
+  [ "$(date +%s)" -lt "$exp" ] && return 0
+  rm -f "$f"; return 1
+}
+
+# maintenance_remaining CONTAINER  -- echo seconds left on the pause (0 if none).
+maintenance_remaining() {
+  local f="$MAINT_DIR/$1" exp now
+  [ -f "$f" ] || { echo 0; return; }
+  exp="$(cat "$f" 2>/dev/null)"; now="$(date +%s)"
+  case "$exp" in *[!0-9]*|'') echo 0; return ;; esac
+  [ "$exp" -gt "$now" ] && echo "$((exp - now))" || echo 0
+}
