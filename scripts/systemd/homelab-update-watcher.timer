@@ -1,0 +1,13 @@
+# Polls wud every 6h (a few min after wud's refresh) and runs the guarded update-watcher.
+# Enable (only after operator GO for the auto-update layer):
+#   systemctl --user enable --now homelab-update-watcher.timer
+[Unit]
+Description=Run the homelab update-watcher periodically
+
+[Timer]
+OnBootSec=12min
+OnUnitActiveSec=6h
+AccuracySec=2min
+
+[Install]
+WantedBy=timers.target

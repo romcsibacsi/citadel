@@ -1,0 +1,16 @@
+# Homelab update-watcher (wud -> test-gated update-pipeline bridge, with tag-safety guard).
+# NOTE: replace /path/to/citadel, /home/USER with your values.
+# SAFETY: ships DRY_RUN=1. Operator/RELAY sets DRY_RUN=0 + enables the timer to go live,
+# only AFTER recovery has run cleanly and the operator approves the update layer.
+[Unit]
+Description=Homelab update-watcher (wud -> guarded, test-gated update-pipeline)
+
+[Service]
+Type=oneshot
+Environment=DRY_RUN=1
+Environment=PATH=/home/USER/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/USER
+Environment=TZ=Europe/Budapest
+ExecStart=/path/to/citadel/scripts/homelab-watchdog/update-watcher.sh
+StandardOutput=append:/path/to/citadel/store/homelab-update-watcher.log
+StandardError=append:/path/to/citadel/store/homelab-update-watcher.log
