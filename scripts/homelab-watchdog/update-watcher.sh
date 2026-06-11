@@ -43,7 +43,9 @@ try:
 except Exception as e:
     sys.stderr.write("wud api error: %s\n"%e); sys.exit(0)
 def parts(tag):
-    m=re.match(r'^(\d+)(?:\.\d+)?(?:\.\d+)?(.*)$', tag or '')
+    t = tag or ''
+    if re.match(r'^v\d', t): t = t[1:]           # strip leading 'v' (v2.63.2 -> 2.63.2)
+    m=re.match(r'^(\d+)(?:\.\d+)?(?:\.\d+)?(.*)$', t)
     if not m: return (None, tag or '')          # non-numeric tag (e.g. "stable","latest")
     return (m.group(1), m.group(2) or '')        # (major, variant-suffix)
 for c in data:
