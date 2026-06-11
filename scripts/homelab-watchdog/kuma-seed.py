@@ -31,6 +31,24 @@ MON = [
     dict(type=MonitorType.PORT, name="Mailcow SMTP", hostname="192.168.1.105", port=25, interval=120),
     dict(type=MonitorType.HTTP, name="Vaultwarden", url="http://192.168.1.105:8091/alive", interval=120),
     dict(type=MonitorType.HTTP, name="Beszel",      url="http://192.168.1.105:8095/", interval=120),
+    # --- bővítés: valódi user-facing appok (2026-06-11, #d7ed5762) ---
+    dict(type=MonitorType.HTTP, name="Forgejo",        url="http://192.168.1.105:8092/api/healthz", interval=60),
+    dict(type=MonitorType.HTTP, name="Navidrome",      url="http://192.168.1.105:8094/ping", interval=120),
+    dict(type=MonitorType.PORT, name="Paperless-ngx",  hostname="192.168.1.105", port=8050, interval=120),
+    dict(type=MonitorType.HTTP, name="n8n",            url="http://192.168.1.105:8096/healthz", interval=120),
+    dict(type=MonitorType.HTTP, name="DokuWiki",       url="http://192.168.1.105:7000/", interval=120),
+    dict(type=MonitorType.HTTP, name="Home Assistant", url="http://192.168.1.105:8123/", interval=60),
+    dict(type=MonitorType.HTTP, name="Filebrowser",    url="http://192.168.1.105:8075/health", interval=120),
+    dict(type=MonitorType.HTTP, name="Dashy",          url="http://192.168.1.105:4000/", interval=120),
+    dict(type=MonitorType.HTTP, name="MeTube",         url="http://192.168.1.105:8101/", interval=120),
+    dict(type=MonitorType.HTTP, name="code-server",    url="http://192.168.1.105:8444/", interval=120, accepted_statuscodes=["200-299","300-399"]),
+    dict(type=MonitorType.PORT, name="Obsidian",       hostname="192.168.1.105", port=8070, interval=120),
+    dict(type=MonitorType.HTTP, name="go2rtc",         url="http://192.168.1.105:1984/", interval=120),
+    dict(type=MonitorType.HTTP, name="Serviio (DLNA)", url="http://192.168.1.105:23423/console/", interval=120),
+    dict(type=MonitorType.PORT, name="IPFS",           hostname="192.168.1.105", port=5001, interval=120),
+    dict(type=MonitorType.HTTP, name="CryptoHungary",  url="http://192.168.1.105:8300/", interval=120, accepted_statuscodes=["200-299","300-399"]),
+    dict(type=MonitorType.HTTP, name="Kormany site",   url="http://192.168.1.105:8100/", interval=120),
+    dict(type=MonitorType.HTTP, name="HiveLink",       url="http://192.168.1.105:8202/", interval=120),
 ]
 
 api = UptimeKumaApi(URL, timeout=30)

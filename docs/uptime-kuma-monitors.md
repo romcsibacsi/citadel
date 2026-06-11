@@ -46,3 +46,27 @@ Reverzibilis: a monitorok törölhetők. *Élő tool DB-jét érinti → ezért 
 
 **Ajánlás:** (B) — ezt kérted („állítsd be"), feasible és reverzibilis; csak egy GO kell, mert a futó
 Kuma DB-jét érinti.
+
+---
+
+## Bővítés — 2026-06-11 (#d7ed5762): 14 -> 31 monitor
+
+Az operátor kérdezte: miért csak 14, ha 67 konténer fut? Mert a 67 nagy része belső al-komponens.
+Hozzáadva a hiányzó VALÓDI user-facing appok (mind élőben verifikálva, csak ami felel):
+
+Forgejo(8092), Navidrome(8094), Paperless-ngx(TCP 8050), n8n(8096), DokuWiki(7000), Home Assistant(8123),
+Filebrowser(8075), Dashy(4000), MeTube(8101), code-server(8444, 2xx-3xx), Obsidian(TCP 8070), go2rtc(1984),
+Serviio DLNA(23423/console), IPFS(TCP 5001), CryptoHungary(8300, 2xx-3xx), Kormany(8100), HiveLink(8202).
+
+**Összesen: 31 monitor, mind UP, mind ntfy+Telegram-értesítővel.**
+
+### Szándékosan KIHAGYVA (belső/zaj, nem user-facing)
+- **mailcow ~18 al-konténer** (acme/clamd/dovecot/postfix/rspamd/sogo/unbound/... ) — a 2 mailcow-monitor (UI 8443 + SMTP 25) fedi a stacket.
+- ***-db / *-redis** (nextcloud-db/redis, paperless-db/broker, cryptohungary-db, mailcow DB-k) — belső, a parent app monitora fedi.
+- **nextcloud-cron, beszel-agent** — sidecar-ok; a parent (Nextcloud / Beszel hub) monitora fedi.
+- **mcp-*** (mcp-workspace/filesystem/mcpvault/smart-connections) — belső MCP-szerverek, nem user-facing.
+- **wud, portainer, test-proxy, cloudflared, wireguard** — infra (opcionális; a wireguard-VPN-t a Beszel host-metrika + a használat jelzi).
+- **hivelink-app** (8200) — backend a hivelink-nginx (8202, »HiveLink« monitor) mögött; a front fedi.
+
+### Külön jelzés
+- **librenms**: az app-konténer NEM fut (csak `librenms-db` mariadb) -> nincs web-UI, amit figyelni lehetne. Ha kell, előbb a librenms appot kell elindítani (külön kártya).
