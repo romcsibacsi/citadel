@@ -25,14 +25,14 @@ if [ -f "$INSTALL_DIR/.env" ]; then
   MAIN_AGENT_ID="$(grep -E '^MAIN_AGENT_ID=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)"
   CHANNEL_PROVIDER="$(grep -E '^CHANNEL_PROVIDER=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)"
   BOT_NAME="$(grep -E '^BOT_NAME=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)"
-  # Claude Code auth: pass API key or OAuth token so the tmux-spawned
-  # claude process can authenticate. These are safe to export -- unlike
-  # TELEGRAM_BOT_TOKEN they don't cause cross-session conflicts.
-  _api_key="$(grep -E '^ANTHROPIC_API_KEY=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)"
-  [ -n "$_api_key" ] && export ANTHROPIC_API_KEY="$_api_key"
+  # Claude Code auth: pass the subscription OAuth token so the tmux-spawned
+  # claude process can authenticate. Safe to export -- unlike TELEGRAM_BOT_TOKEN
+  # it doesn't cause cross-session conflicts. ANTHROPIC_API_KEY is intentionally
+  # NOT read/exported (#4c8196c1): CITADEL runs ONLY on the subscription OAuth
+  # token; an API key would route Claude calls to the billed API.
   _oauth="$(grep -E '^CLAUDE_CODE_OAUTH_TOKEN=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)"
   [ -n "$_oauth" ] && export CLAUDE_CODE_OAUTH_TOKEN="$_oauth"
-  unset _api_key _oauth
+  unset _oauth
 fi
 CHANNEL_PROVIDER="${CHANNEL_PROVIDER:-telegram}"
 SESSION="${MAIN_AGENT_ID:-nexus}-channels"
@@ -137,9 +137,8 @@ fi
 if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
   $TMUX set-environment -g CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN" 2>/dev/null || true
 fi
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  $TMUX set-environment -g ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY" 2>/dev/null || true
-fi
+# ANTHROPIC_API_KEY is intentionally NOT broadcast to the tmux server (#4c8196c1):
+# CITADEL authenticates only via the subscription OAuth token above.
 
 # Hybrid channel-coordinator model: the native plugin stays the PRIMARY inbound
 # path (it always polls getUpdates here -- never outbound-only). The standalone
