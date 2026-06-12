@@ -40,6 +40,13 @@ choices, not from the domain:
   per provider). This makes the entire watchdog/recovery/backfill layer **unnecessary** — a normal
   reconnecting client with offset persistence + dedup replaces it.
 
+**Billing reality constrains the runtime (see §5 — verified June 2026):** the in-process Agent SDK
+(`query()`) is pay-as-you-go API with no subscription path, and headless `claude -p` now draws from
+a small capped metered credit — so the subscription-billed reference adapter drives an **interactive
+Claude Code instance** (a TUI). Some terminal-driving is therefore unavoidable; its fragility is
+contained by making the supervisor the single owner of output + single serializer of input (§3),
+NOT by reaching for the SDK. Keep any SDK/headless adapter as an explicit, API-billed opt-in only.
+
 Keep these timeless concepts regardless of substrate: durable message queue with no-message-loss +
 dedup + offset persistence; busy/ready/forceSend delivery semantics; the trust model; per-agent
 isolation. **Everything in §"Self-healing" is mostly substrate-specific and should shrink to near
@@ -170,13 +177,32 @@ all of these — prefer that.
 
 - **Default auth is the host's subscription OAuth login** (no API key injected). **The default
   path MUST NEVER require or set an `ANTHROPIC_API_KEY`.**
+- **Subscription-billing constraint (MUST — load-bearing for cost; verified June 2026):** the system
+  MUST run on the interactive subscription, NEVER pay-as-you-go API. The verified Anthropic billing
+  reality dictates the runtime choice:
+  - **Interactive Claude Code (TUI)** draws from the subscription's shared usage pool and is the only
+    effectively-unlimited subscription-billed surface → the default reference adapter.
+  - **In-process Agent SDK (`query()`)** requires an API key and bills pay-as-you-go; there is NO
+    supported subscription-auth path → do NOT use it for any subscription-billed agent.
+  - **Headless `claude -p`** is subscription-authenticated, but since 2026-06-15 its usage no longer
+    counts against the chat pool — it draws from a separate **capped, non-rolling monthly "Agent SDK
+    credit"** metered at API rates that then STOPS (or spills to API rates only if "usage credits"
+    are explicitly enabled). Treat it as a budgeted, finite one-shot path: keep "usage credits"
+    DISABLED if the goal is to never incur an API charge, and prefer interactive agents for ongoing
+    work.
+  - **`ANTHROPIC_API_KEY` MUST NEVER be present** in ANY process env (agent, scheduler, cron, hook,
+    one-shot). A stray key silently flips even the interactive TUI to metered API billing (a
+    documented cause of large surprise bills). Assert subscription auth at startup; refuse to launch
+    if an API key is detected in the target environment.
 - **Backend routing by model id (data concept):** a model string both names the model and selects a
   backend. Provide a clean **adapter seam**: default vendor (subscription OAuth); alternate
   providers and **local models** via an Anthropic-compatible base-URL + auth-token override; an
   explicit per-agent **api-key opt-in** (key resolved from the Vault, never from argv/git). Short
   model aliases resolve from a **config map** (don't hardcode a model lineup).
 - **One-shot text generation** (for generating persona docs / skill docs) MUST use a separate
-  non-interactive code path — never the live interactive agent path.
+  non-interactive code path — never the live interactive agent path. That path MUST itself be
+  subscription-authenticated (`claude -p` via the subscription login, NOT the API-billed SDK), and
+  it consumes the capped Agent SDK credit (above) post-2026-06-15 — so keep one-shots small and few.
 
 OPTIONAL: specific local-model/alternate-provider integrations; the "1M-context" style suffixes.
 
@@ -571,7 +597,10 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
 9. **Single supervisor:** exactly one process owns scheduler/reconcilers/channels (lock-enforced).
 10. **Scaffolding never overwrites** existing operator-edited files; schema additions are explicit
     additive migrations.
-11. **Auth default = subscription OAuth; never require ANTHROPIC_API_KEY** on the default path.
+11. **Subscription billing only:** auth is the interactive subscription (OAuth); `ANTHROPIC_API_KEY`
+    is NEVER present in any process env (a stray key silently bills pay-as-you-go, even the TUI). The
+    in-process Agent SDK is pay-as-you-go and is NOT used for subscription-billed agents; `claude -p`
+    is a capped, metered Agent-SDK-credit path post-2026-06-15, not the free pool (see §5).
 12. **Dispatch-once:** card→in_progress wakes the agent exactly once (guarded); move hooks are
     error-tolerant.
 13. **Live watch + serialized input:** the operator can always watch any running agent live and
@@ -602,10 +631,13 @@ colors, prose language, timezone, ports and paths are CONFIG, not code — ship 
 
 ## 22. Open decisions for the architect (my recommendations)
 
-1. **Agent runtime:** reference = Claude Code behind the `AgentRuntime` interface (fastest to a
-   working feature-equivalent system). **Recommend:** deliver via the cleanest IPC the agent process
-   supports; keep all substrate quirks inside the adapter. Decide later whether to add a managed-
-   process/SDK adapter.
+1. **Agent runtime:** reference = **interactive Claude Code** behind the `AgentRuntime` interface —
+   it is the only effectively-unlimited subscription-billed surface (see §5), so it is the default,
+   not merely the fastest. Contain its terminal-driving inside the adapter; the single-serializer
+   rule (§3) keeps it robust. The in-process **Agent SDK adapter is API-billed (pay-as-you-go) and
+   must be opt-in only**, never the default. `claude -p` is a budgeted, capped-credit one-shot path
+   (§5), not a free substitute for interactive agents. (This was an open decision; the billing
+   verification closed it.)
 2. **Channels:** **recommend first-class reconnecting clients** (drop the plugin substrate + its
    whole recovery layer). Pick one provider for v1 behind the `ChannelProvider` interface.
 3. **Embeddings:** **recommend pluggable, default off** (FTS-only) for a clean v1; add a provider
