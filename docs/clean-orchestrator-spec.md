@@ -116,6 +116,26 @@ Requirements:
   **forceSend** escape hatch for must-run deliveries during long-busy periods. (In the reference
   Claude-Code adapter these map to session readiness; in a managed-process adapter they map to
   the process's own queue. Keep the semantics; hide the mechanism.)
+- **Live observe + direct human input (MUST, runtime-agnostic):** every `AgentRuntime` MUST expose
+  (a) a **live output stream** — a read-only, structured projection of the agent's activity
+  (streaming text, tool calls + results, and a busy/ready/blocked/needs-input state) suitable for
+  fan-out to many subscribers, and (b) an **`injectInput(msg, {source, force?})`** operation — the
+  ONE path by which anything reaches the agent's input. `source` distinguishes `machine` (scheduler/
+  router/watcher/healer) from `operator` (a human typing live).
+- **Single owner / single serializer (MUST):** the supervisor is the **sole owner** of each agent's
+  output stream (it multicasts; subscribers cannot affect the agent) and the **sole serializer** of
+  its input. ALL producers — scheduler, message-router, watchers, and the operator — go through
+  `injectInput` into one ordered per-agent queue; **no component ever drives an agent's input
+  directly**. This makes machine delivery and direct human typing safe by construction: they are
+  ordered, never interleaved (no shared-stdin race), and both obey the busy/ready + `forceSend`
+  semantics above. Operator injections MUST be written to the conversation ledger as a distinct,
+  attributed entry (e.g. `operator injected: …`) so direct typing is auditable, not an invisible
+  side-channel.
+- **Terminal attach (OPTIONAL, never the control plane):** an adapter MAY also offer a literal
+  terminal attach (e.g. a native interactive session) for operators who want the raw terminal feel,
+  but it MUST be **read-mostly / out-of-band** — the canonical view is the live output stream and the
+  canonical input path is `injectInput`. Attach-write bypasses the serializer and is an expert
+  escape hatch only, never a path the system itself uses.
 
 OPTIONAL / substrate-specific (only if you reuse the CLI-in-terminal substrate): modal dismissal
 after spawn, keystroke chunking, pane double-sampling for readiness, single-quoting model strings,
@@ -468,6 +488,15 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
 - **SSE (MUST):** streaming an agent's live output MUST be **async/non-blocking** — never a
   synchronous capture on an interval (it would freeze the single-threaded event loop for all
   clients); skip overlapping ticks.
+- **Watch + type is a first-class dashboard requirement (MUST):** the live agent-output stream is
+  the **primary human view** of any running agent — the operator MUST be able to watch ANY running
+  agent live regardless of which runtime adapter backs it or who/what is currently driving it. An
+  **input endpoint** MUST let the operator type directly to a running agent; the dashboard is one
+  `streamOutput` subscriber and one `injectInput` producer — it is NEVER wired to an agent directly.
+  Operator input submitted here goes through the supervisor's single serializer (§3) and is logged
+  to the conversation ledger as an attributed `operator`-source entry. The operator MUST always be
+  able to **interrupt** a busy/stuck agent via this path (the `force` injection). A reconnecting
+  client for the output SSE is RECOMMENDED (a dropped stream must not require tearing down the view).
 - **File browser (MUST if included):** expose only allow-listed roots; **NEVER expose the
   secret/state dir**. Containment-check every (root, path) **both lexically (reject `..`) and via
   realpath (reject symlink escape)**. Uploads: stream (never fully buffer), `O_EXCL|O_NOFOLLOW` (no
@@ -545,6 +574,11 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
 11. **Auth default = subscription OAuth; never require ANTHROPIC_API_KEY** on the default path.
 12. **Dispatch-once:** card→in_progress wakes the agent exactly once (guarded); move hooks are
     error-tolerant.
+13. **Live watch + serialized input:** the operator can always watch any running agent live and
+    inject input into it; the supervisor is the sole owner of each agent's output stream and the
+    sole serializer of its input, ordering machine + human messages into one stream so direct human
+    typing never races machine delivery and is recorded, attributed, in the ledger. A literal
+    terminal attach, if offered, is read-mostly and never the control plane.
 
 ---
 
