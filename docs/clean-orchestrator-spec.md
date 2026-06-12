@@ -162,6 +162,43 @@ the single-serializer rule. Only a non-Claude / fully-owned runtime that exposes
 programmatic channel can talk via real API and skip all of these — prefer real IPC THERE, never as a
 substitute for the subscription-billed interactive path.
 
+### 3a. Interactive terminal-multiplexer reference adapter (MUST for the subscription path)
+
+Since the subscription-billed runtime is an interactive Claude Code TUI (§5), the reference adapter
+drives it inside a **terminal multiplexer**. The following behaviors are what make it ACTUALLY work
+— for this adapter they are MUST, not optional. (A naive build that only unit-tests the adapter
+against a fake driver will pass while the real substrate is broken — see §23.)
+
+- **Session ownership & persistence (MUST):** each agent runs as a long-lived **interactive REPL in
+  its own detached multiplexer session owned by the multiplexer SERVER — never as a child process of
+  the supervisor.** So a supervisor restart/crash never kills agents, and the operator can ATTACH to
+  the session to watch live and (out-of-band) type. Sessions have deterministic names addressed by
+  **EXACT name match** (a substring/prefix match hits the wrong agent).
+- **Launch rules (MUST):** start the agent INTERACTIVE only — never a headless one-shot (it exits
+  after one turn, leaving nowhere to inject the next prompt). Put the subscription auth token into
+  the multiplexer SERVER-global environment BEFORE the first session is created; actively UNSET any
+  inherited channel/bot tokens and `ANTHROPIC_API_KEY` from the agent's environment; single-quote
+  the model id; OMIT session-resume when creating a brand-new agent (resume only an agent that has
+  prior state); use prompt-bypass only in a permissive profile and never as root.
+- **Readiness classifier (MUST):** model agent state as a small discrete set — **idle / busy /
+  typing / error / unknown** — derived ONLY from the LIVE input+footer region of the pane, never
+  from scrollback (a busy/error phrase quoted in history is the classic "permanently stuck" bug).
+  Treat "busy" as **turn-scoped via a runtime counter**, not by matching spinner words alone (a
+  spinner verb is "busy" only when paired with an active-turn signal on the same line). Confirm
+  "idle" with a short **double-sample** (~250 ms apart) so a momentary blank isn't read as ready.
+- **Input delivery (MUST):** deliver prompt text as **literal chunks kept under the terminal's
+  bracketed-paste threshold** (nudge a chunk boundary so a chunk never begins with a character the
+  TUI treats as a flag, e.g. a leading dash), then send a **SEPARATE submit keystroke** — never rely
+  on a trailing newline in the text. Before delivering, **dismiss any modal** (survey / resume /
+  trust prompt) and clear a stale framing preamble; after sending, do a **bounded retry** scoped to
+  the live input box if the text didn't land. All of this sits behind the single-serializer (§3) so
+  machine and operator input never interleave.
+- **Recovery = respawn-in-place (MUST):** if an agent session is wedged or vanished, **recreate /
+  replace just that agent's process or session — NEVER kill the multiplexer server or restart the
+  supervising service** (that drops the operator's attach and every other agent on the shared
+  multiplexer). Apply a **post-respawn / startup grace window** so multiple recovery paths don't
+  stack restarts on the same agent.
+
 ---
 
 ## 4. Roster, agent config & bootstrap
@@ -344,6 +381,9 @@ may use files or DB — keep the config fields.
 - Cron matching with a **catch-up window** (a longer window on the first tick after restart, short
   normally) + a **persisted last-run map**, so it neither misses fires across restarts nor
   double-fires within the catch-up window.
+- **Reconcile-first (MUST):** on each tick the runner processes the durable never-abandon retry
+  table BEFORE evaluating new cron fires (a previously-stuck must-run task takes precedence), and
+  persists last-run + any channel offset only AFTER a durable handoff.
 - **Busy handling:** a task whose target is busy is, by default, **persisted to a never-abandon
   retry queue** and retried until success or operator cancel (so daily/weekly business-critical
   tasks are never silently dropped). `skipIfBusy` (silent drop) is opt-in and only for
@@ -550,7 +590,8 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
   updates. **All behind the bearer.**
 - **SSE (MUST):** streaming an agent's live output MUST be **async/non-blocking** — never a
   synchronous capture on an interval (it would freeze the single-threaded event loop for all
-  clients); skip overlapping ticks.
+  clients); skip overlapping ticks. Prefer pushing a **full current-state snapshot per repaint
+  tick** (async) over incremental diffs that can desync a reconnecting client.
 - **Watch + type is a first-class dashboard requirement (MUST):** the live agent-output stream is
   the **primary human view** of any running agent — the operator MUST be able to watch ANY running
   agent live regardless of which runtime adapter backs it or who/what is currently driving it. An
@@ -633,6 +674,25 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
   (scoped to the live input/footer region only — never match a busy/error phrase quoted in
   scrollback, a real source of "permanently stuck" incidents); orphan-poller reaping. **In a runtime
   with a proper agent API + first-class channel clients, almost none of this is needed.**
+
+### 19a. Required for the terminal-multiplexer + chat-plugin substrate (the subscription path)
+
+The "self-healing" family above is OPTIONAL only for a hypothetical subscription-free API runtime.
+The subscription path uses the interactive TUI (§3a) and, if the chat provider is a CLI plugin, a
+shared poll slot — so for THAT substrate these are MUST:
+- **Record-first watchers:** a stuck-input watcher (re-submit input that never landed); a frozen
+  tool-call watcher (detect by **wall-clock stagnation + low CPU**, then **replace the process in
+  place** — never kill the session); a stuck-permission watcher and an API-error watcher that are
+  **alert-only** (record + notify the operator, never auto-act). Every watcher records evidence
+  before acting and only clears a flag it itself set.
+- **Orphan reaping before every spawn:** identify a stale/orphaned poller or agent process by
+  **pane attribution** (orphan iff neither it nor any ancestor is a live multiplexer-pane pid) —
+  NOT by argv matching — corroborated by a pid-file and an environment scan. **FAIL SAFE: if the set
+  of live panes cannot be determined, REFUSE to reap** (a wrongly-reaped live poller, or a surviving
+  stale one, hammers the bot token, causes provider conflicts, and is misread as "down").
+- **Channel isolation for non-chat agents:** any channel-less or background/headless agent MUST
+  disable the chat plugin at project scope and read any token from its OWN state dir — otherwise it
+  steals/kills the hub's live main poller.
 
 ---
 
@@ -730,6 +790,18 @@ default is **Hungarian, switchable**, with the install-wide default locale chose
 - A real test suite; the **pure security/privilege/trust functions MUST be exhaustively unit-tested**
   (the gate, the sanitizer, the routing decision, the permission precedence). Schema migrations and
   the ledger-continuity constraint tested.
+- **Real end-to-end runtime smoke (MUST — not just mocked seams):** unit-testing the runtime adapter
+  against an injected/fake driver is necessary but INSUFFICIENT — it passes while the real substrate
+  is broken. There MUST be a smoke test that ACTUALLY creates a detached multiplexer session running
+  an interactive process, asserts the session **persists and is attachable**, delivers input through
+  the real path, and observes output via the live stream. (Where launching a real model session is
+  impractical in CI, drive a trivial stand-in interactive program — but exercise the REAL
+  multiplexer + input + capture path, never a mock.)
+- **Headless-browser UI verification (MUST):** verify the dashboard with a **headless browser**
+  (e.g. Playwright/Chromium) — load the SPA, exercise the **theme switcher** and the **language
+  switcher (HU↔EN)**, confirm the live agent-output view renders and the input box posts, and
+  **capture screenshots** as artifacts. A web UI IS verifiable without a human at a GUI; do this —
+  do not declare the UI done on HTTP-status checks alone.
 - Original code authored from THIS spec (clean-room) — own architecture, names, structure. The spec
   describes behavior; you choose the design.
 - Ship a single config surface; no hardcoded roster/locale/paths; ship **both HU+EN** locales with
