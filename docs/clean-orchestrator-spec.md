@@ -639,6 +639,43 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
 
 ---
 
+### 17a. Visual design system (the product's visual identity)
+
+The dashboard's look is a deliberate, owned design — reproduce it as ORIGINAL CSS from design tokens
+(full exhaustive detail in the design build-prompt; this is the spec-level contract).
+
+- **Layout shell (MUST):** a CSS-grid app shell = a fixed **220px left sidebar** + a `1fr` main
+  column (base 15px / line-height 1.5). Sidebar (sticky, full height, `--bg-card`, right hairline):
+  a brand block (logo glyph + product name + a small "online" line) on top, a scrollable icon+label
+  **nav** (active item = accent text + accent-soft pill + glow), and a footer (theme quick-toggle +
+  a settings/"Tweaks" gear). Main: a **page-header** (display-font h1 title + muted subtitle) then
+  the view content. Collapses to a drawer on narrow screens.
+- **Token contract (MUST):** a ~30-variable token set (bg/bg-card/bg-card-hover/bg-input/bg-modal/
+  bg-code; text/secondary/muted; border/border-focus; accent/hover/soft; danger/success/info +
+  softs; shadow-sm/md/lg; radius/sm/lg; transition) + extended tokens **--font-display/-body/-mono,
+  --glow (0..1), --ac (per-agent accent), --accent-violet, --accent-gold**. Every component re-skins
+  from this set alone.
+- **Themes (MUST — ship ≥5, default = "obsidian"):** OBSIDIAN COMMAND (default; dark, cyan #34D6F0 +
+  violet #9B79FF + gold, deep #0A0A12, Space Grotesk/IBM Plex; dual radial ambient wash), STARK HUD
+  (cyan #46E6FF arc-reactor; technical-grid backdrop, corner-bracket reticles, mono-uppercase
+  instrument labels, Rajdhani/Chakra Petch), ARCANE FORGE (gold #E6B249 + ember on warm obsidian,
+  Cinzel serif display), LIGHT (warm parchment #FAF9F5 / coral #D97757), DARK (neutral). Switch at
+  runtime, no reload, persisted (see §17 theming).
+- **Signature treatments (MUST keep the concept):** **per-agent accent** (--ac drives that agent's
+  chrome); the **framed avatar** = clean portrait on a tinted dark radial disc, circular-cropped,
+  with an accent rim + outer glow scaled by --glow (obsidian adds a slow conic rune-sweep; stark a
+  corner-bracket reticle; honor prefers-reduced-motion); **glow** as a first-class adjustable
+  variable (avatar rings, active-nav, focus rings).
+- **Component inventory:** stat cards (big accent value + uppercase muted label), agent cards
+  (framed avatar + name + role + status dot; auto-fill grid), the team **constellation** (hub
+  featured, specialists in a grid) + an activity feed, pill badges, slide-up modals, dashed "add"
+  cards.
+- **Tweaks panel (SHOULD):** a floating live-customization panel — theme, **density**
+  (comfortable/compact), **glow** slider, **accent** swatches — all persisted and applied
+  **before first paint** (no flash-of-unstyled).
+
+---
+
 ## 18. Persistence & data model
 
 - **One embedded SQLite database in WAL mode**, file + sidecars **0600** (pre-create with
