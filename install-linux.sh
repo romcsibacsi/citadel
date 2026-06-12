@@ -339,6 +339,7 @@ else
 
   if [ "$AUTH_MODE" = "1" ]; then
     echo ""
+    warn "API key = SZAMLAZOTT (pay-as-you-go): minden Claude-hivas fizetos. A CITADEL elsodlegesen az elofizeteses OAuth tokent (2) ajanlja -- API key-t csak akkor valassz, ha tudatosan ezt akarod (#655572e7)."
     echo -e "  ${DIM}API kulcsot itt talalod: https://console.anthropic.com/settings/keys${NC}"
     read -p "  ANTHROPIC_API_KEY (sk-ant-...): " ANTHROPIC_API_KEY_INPUT
     if [ -n "$ANTHROPIC_API_KEY_INPUT" ]; then
