@@ -1,6 +1,4 @@
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir, tmpdir } from 'node:os'
 import {
   searchMemories,
   recentMemories,
@@ -11,61 +9,10 @@ import {
   listKanbanCardsSummary,
   type Memory,
 } from './db.js'
-import { runAgent } from './agent.js'
+import { sendPromptToSession } from './web/agent-process.js'
+import { MAIN_CHANNELS_SESSION } from './web/main-agent.js'
 import { logger } from './logger.js'
 import { wrapUntrusted, UNTRUSTED_PREAMBLE } from './prompt-safety.js'
-
-// Dedicated cwd for the daily-digest sub-agent. We can't reuse PROJECT_ROOT
-// here -- the Nexus Telegram channels session runs claude --continue in
-// PROJECT_ROOT, and the SDK's per-cwd session/lock state collides with it
-// when two Claude Code processes share the same project dir, dropping the
-// channels plugin every night at 23:00. A throwaway dir under the user's
-// `~/.claude/projects/` tree avoids the collision while keeping the SDK
-// happy (it expects a writable cwd to place its session jsonl into).
-//
-// We honor TMPDIR via os.tmpdir() as a last-resort fallback so a hardened
-// host with a read-only home still has somewhere to land.
-function ensureDigestCwd(): string {
-  const candidates = [join(homedir(), '.claude', 'tmp', 'nexus-digest'), join(tmpdir(), 'nexus-digest')]
-  for (const dir of candidates) {
-    try {
-      mkdirSync(dir, { recursive: true })
-      return dir
-    } catch { /* try next */ }
-  }
-  // Last resort: tmpdir itself. Worst case we share with whatever else is
-  // in /tmp, but that still doesn't collide with the Nexus project dir.
-  return tmpdir()
-}
-
-// The daily digest sub-agent inherits the host's CLAUDE_CONFIG_DIR
-// (~/.claude/) by default, which means it loads the user's globally
-// enabled plugins -- including telegram@claude-plugins-official. The
-// Telegram Bot API only allows ONE active getUpdates connection per
-// token, so the sub-agent's plugin steals the connection from the
-// long-running nexus-channels session, which then logs as
-// "plugin lecsatlakozott" at 23:00 every night when runDailyDigest
-// fires. Workaround: hand the sub-agent a private CLAUDE_CONFIG_DIR
-// with `enabledPlugins: {}` so it never spawns the Telegram MCP. The
-// dir is created idempotently on first use; the settings.json is
-// written only if missing so the user can edit it later if needed.
-function ensureDigestConfigDir(): string {
-  const candidates = [
-    join(homedir(), '.claude', 'tmp', 'nexus-digest-config'),
-    join(tmpdir(), 'nexus-digest-config'),
-  ]
-  for (const dir of candidates) {
-    try {
-      mkdirSync(dir, { recursive: true })
-      const settingsPath = join(dir, 'settings.json')
-      if (!existsSync(settingsPath)) {
-        writeFileSync(settingsPath, JSON.stringify({ enabledPlugins: {} }, null, 2))
-      }
-      return dir
-    } catch { /* try next */ }
-  }
-  return tmpdir()
-}
 
 // Semantic: user preferences, facts about themselves, persistent info
 const SEMANTIC_PATTERN =
@@ -176,32 +123,28 @@ export async function runDailyDigest(chatId: string): Promise<string | null> {
     .join('\n')
 
   const prompt = `${UNTRUSTED_PREAMBLE}
-Az alabbi egy AI asszisztens mai emlekei egy felhasznaloval folytatott beszelgetesekbol.
+Csendes napi-naplo feladat (automatikus, 23:00). Az alabbi az AI asszisztens mai emlekei egy felhasznaloval folytatott beszelgetesekbol.
 Irj egy tomor napi osszefoglalot (max 5-8 mondat), ami megragadja:
 1. Milyen feladatokon dolgoztak
 2. Milyen fontos dontesek szulettek
 3. Mi maradt nyitva / mi a kovetkezo lepes
+Magyarul irj.
 
-Csak az osszefoglalot add vissza, semmi mast. Magyarul irj.
+MENTSD el a napi naploba (a sajat napi-naplo mechanizmusoddal: POST /api/daily-log, agent_id "nexus") -- ez a feladat egyetlen kimenete. NE kuldj rola Telegram/csatorna-uzenetet, ez csendes hatter-feladat.
 
 Mai emlekek:
 ${memoryLines}`
 
+  // Route the digest through the INTERACTIVE Nexus session (subscription pool),
+  // NOT a headless SDK query(): the project invariant forbids the headless/API
+  // path (billing + interactive-pool isolation, #7093dca2). Nexus generates AND
+  // saves the daily log itself; fire-and-forget (the 23:00 scheduler ignores the
+  // return value).
   try {
-    const digestCwd = ensureDigestCwd()
-    const digestConfigDir = ensureDigestConfigDir()
-    const { text } = await runAgent(prompt, undefined, undefined, false, digestCwd, {
-      CLAUDE_CONFIG_DIR: digestConfigDir,
-    })
-    if (!text) return null
-
-    const digest = text.trim()
-    const today = new Date().toLocaleDateString('hu-HU')
-    saveMemory(chatId, `[Napi naplo ${today}] ${digest}`, 'episodic')
-    logger.info({ chatId, digestCwd, digestConfigDir }, `Napi naplo mentve: ${today}`)
-    return digest
+    sendPromptToSession(MAIN_CHANNELS_SESSION, prompt)
+    logger.info({ chatId, count: todayMemories.length }, 'Napi naplo: prompt elkuldve a Nexus interaktiv session-be')
   } catch (err) {
-    logger.error({ err }, 'Napi naplo generalas hiba')
-    return null
+    logger.error({ err }, 'Napi naplo: send-keys hiba')
   }
+  return null
 }

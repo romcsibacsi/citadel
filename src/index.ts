@@ -9,10 +9,14 @@ import {
 import { join } from 'node:path'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Server as HttpServer } from 'node:http'
-import { STORE_DIR, PID_FILENAME, WEB_PORT, ALLOWED_CHAT_ID, RESPAWN_ENABLED, HEARTBEAT_AGENT_ENABLED } from './config.js'
+import { PROJECT_ROOT, STORE_DIR, PID_FILENAME, WEB_PORT, ALLOWED_CHAT_ID, RESPAWN_ENABLED, HEARTBEAT_AGENT_ENABLED } from './config.js'
 import { initDatabase } from './db.js'
 import { runDecaySweep, runDailyDigest } from './memory.js'
-import { initHeartbeat, stopHeartbeat } from './heartbeat.js'
+// initHeartbeat was imported but never called (the native scheduler is OFF since
+// the 2026-06-02 switch to the heartbeat sub-agent) -> dropped the dead import
+// (#ac5ff05b). stopHeartbeat is still used in shutdown. The heartbeat.ts module
+// stays for its other live exports.
+import { stopHeartbeat } from './heartbeat.js'
 import { ensureHeartbeatAgent, shouldBootHeartbeatAgent, HEARTBEAT_AGENT_NAME } from './web/heartbeat-agent-scaffold.js'
 import { startAgentProcess } from './web/agent-process.js'
 import { startWebServer } from './web.js'
@@ -368,8 +372,31 @@ const shutdown = (): void => {
   }
 }
 
+// Project invariant: the CITADEL dashboard runs EXCLUSIVELY on the subscription
+// OAuth token; it must NEVER carry ANTHROPIC_API_KEY, which would silently route
+// Claude calls to the billed API. Hard-fail at startup if the key is present in
+// the process env or the install .env (#29314061).
+function assertNoAnthropicApiKey(): void {
+  const fromEnv = (process.env.ANTHROPIC_API_KEY ?? '').trim()
+  let fromDotenv = ''
+  try {
+    for (const line of readFileSync(join(PROJECT_ROOT, '.env'), 'utf-8').split('\n')) {
+      const m = /^\s*ANTHROPIC_API_KEY\s*=\s*(\S.*)$/.exec(line)
+      if (m) { fromDotenv = m[1].trim(); break }
+    }
+  } catch { /* no .env -> nothing to check */ }
+  if (fromEnv || fromDotenv) {
+    const where = [fromEnv && 'process.env', fromDotenv && '.env'].filter(Boolean).join(' + ')
+    logger.error(
+      `BIZTONSAGI LEALLAS: ANTHROPIC_API_KEY eszlelve (${where}). A CITADEL KIZAROLAG az elofizeteses OAuth tokenen fut; az API-kulcs jelenlete szamlazott API-hivasokhoz vezetne. Tavolitsd el a kulcsot (.env + kornyezet), es indItsd ujra.`,
+    )
+    process.exit(1)
+  }
+}
+
 async function main(): Promise<void> {
   console.log(BANNER)
+  assertNoAnthropicApiKey()
 
   // Install signal handlers EARLIEST so we can respond cleanly to SIGTERM
   // during init. Required to close the fresh-startup race: a concurrent
@@ -400,6 +427,13 @@ async function main(): Promise<void> {
 
   // Daily digest at 23:00. Timer handles kept so shutdown can drop them.
   function scheduleDailyDigest() {
+    // Secondary off-switch (#7093dca2): the digest now runs via the interactive
+    // subscription session (never headless/API), but the operator can still
+    // disable the auto-digest entirely. Default = enabled.
+    if (process.env.DAILY_DIGEST_ENABLED === '0' || process.env.DAILY_DIGEST_ENABLED === 'false') {
+      logger.info('Napi naplo utemezes letiltva (DAILY_DIGEST_ENABLED)')
+      return
+    }
     const now = new Date()
     const target = new Date(now)
     target.setHours(23, 0, 0, 0)
