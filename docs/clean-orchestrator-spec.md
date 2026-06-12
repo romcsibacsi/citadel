@@ -33,9 +33,15 @@ choices, not from the domain:
   `start/stop/restart/send(prompt)/status/streamOutput`. Provide a **reference adapter** that runs
   each agent as a real **Claude Code instance** (this is the fastest path to a working,
   feature-equivalent system), but behind the interface so other runtimes/LLMs can be added later.
-  Crucially: deliver prompts via a **proper API/IPC to the agent process**, not tmux keystrokes,
-  if the chosen agent process supports it; if you must drive a CLI, encapsulate ALL of that inside
-  the adapter so the rest of the system only sees `send()`/`status()`.
+  Crucially: the IPC/transport choice is **constrained by billing, not just engineering taste** (see
+  §5). For the subscription-billed reference adapter (Claude Code) the ONLY subscription-billed
+  surface is the **interactive TUI**, so that adapter MUST drive a terminal session — a "proper
+  API/IPC" (the Agent SDK / `query()`) is pay-as-you-go and is NOT an option for the default path.
+  The proper-IPC ideal therefore applies ONLY to non-Claude / fully-owned runtimes that expose a
+  subscription-free programmatic channel; for those, prefer real IPC over keystrokes. Whichever
+  transport an adapter uses, **encapsulate ALL of it inside the adapter** so the rest of the system
+  only sees `send()`/`status()`/`injectInput()`; the terminal-driving fragility is contained by the
+  single-owner/single-serializer rule (§3), NOT by reaching for the SDK.
 - **Channels = first-class long-poll/websocket clients you own** (a reconnecting `ChannelClient`
   per provider). This makes the entire watchdog/recovery/backfill layer **unnecessary** — a normal
   reconnecting client with offset persistence + dedup replaces it.
@@ -82,9 +88,13 @@ the bot connections (enforced by a port/pidfile singleton lock). Two instances m
   vendor. NEVER require an `ANTHROPIC_API_KEY` for the default path.
 - **Channel providers are pluggable** behind a `ChannelProvider` interface (reference: one chat
   provider; design for ≥2).
-- **Locale/branding are configuration**, not code: roster names, accent colors, language of
-  generated prose and operator messages, timezone, install paths, ports — all config-driven. Ship
-  English defaults. (The reference system was Hungarian + a fixed roster; do NOT hardcode either.)
+- **Locale/branding are configuration**, not code: roster names, accent colors, timezone, install
+  paths, ports — all config-driven; do NOT hardcode a roster. **Language is a first-class, two-locale
+  concern, NOT 'English-default' (see §7a):** code is English; operator-facing prose + UI are
+  localized; ship **both Hungarian and English** complete and first-class; the operator-facing
+  default is **Hungarian, switchable at runtime**; the install-wide default locale is **chosen at
+  install**. The dashboard ships an original default **theme** + a persisted runtime theme switcher
+  and a persisted runtime **language switcher** (see §17).
 - **Core vs optional:** build the CORE (§§3–17 minus the explicitly-optional). Treat media gen,
   homelab/service monitoring, region-specific connectors, specific scheduled-task content, and the
   substrate recovery layer as **optional modules**.
@@ -146,8 +156,11 @@ Requirements:
 
 OPTIONAL / substrate-specific (only if you reuse the CLI-in-terminal substrate): modal dismissal
 after spawn, keystroke chunking, pane double-sampling for readiness, single-quoting model strings,
-encoded-projects-dir probing before resume. A clean adapter that talks to the agent via API avoids
-all of these — prefer that.
+encoded-projects-dir probing before resume. These are unavoidable for the subscription-billed Claude
+Code reference adapter (which MUST drive a TUI — see §5), so contain them inside that adapter behind
+the single-serializer rule. Only a non-Claude / fully-owned runtime that exposes a subscription-free
+programmatic channel can talk via real API and skip all of these — prefer real IPC THERE, never as a
+substitute for the subscription-billed interactive path.
 
 ---
 
@@ -263,6 +276,30 @@ The trust relationships (reportsTo/delegatesTo/trustFrom; hub as implicit peer o
 multi-stage down-cascade, keepalive staleness, inbound-deafness probing, orphan-poller reaping,
 plugin reconnect keystroke driving, the separate backfill coordinator). A first-class owned
 reconnecting client replaces ALL of it. Voice-note transcription, inline-button relay = optional.
+
+---
+
+### 7a. Localization & language policy (MUST)
+
+- **Code is English, prose/UI is localized.** ALL source — identifiers, types, function/variable
+  names, log keys, DB column names, config keys, code comments, commit messages — MUST be **English**.
+  Only **operator-facing prose** (UI strings, channel/operator messages, generated reports,
+  persona/doc prose) is localized. No localized identifiers, no mixed-language code.
+- **Ship BOTH Hungarian and English as first-class locales.** The system MUST ship **complete,
+  parity** HU and EN message catalogs for every operator-facing surface (dashboard UI,
+  channel/operator messages, brief/digest templates) at v1 — neither is a stub or a reference-only
+  artifact. Adding a third locale MUST be a drop-in catalog, no code change.
+- **Operator-facing default is Hungarian, but switchable.** The shipped operator-facing default
+  locale is **Hungarian**; the operator can switch to English (or any shipped locale) at runtime via
+  the GUI switcher (§17) and via config. The UI language and the agents' prose-generation language
+  are **independent, separately switchable** axes.
+- **Default locale is chosen AT INSTALL.** The installer / first-run setup (§23) MUST **prompt for
+  (or accept a flag/config value for) the default locale**, seeding it as the install-wide default
+  for both UI and generated prose. Absent any choice, fall back to Hungarian. The runtime switcher
+  can override the per-operator/per-session locale at any time without reinstall.
+- **No hardcoded locale.** Locale, timezone, and the prose language an agent writes in are
+  config-driven (resolved at runtime, changeable without rebuild). Nothing in code may assume a
+  single language.
 
 ---
 
@@ -535,6 +572,29 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
   reads then strips from the URL. (Serving over HTTPS — e.g. a private mesh VPN or a reverse proxy —
   is required for the PWA service worker; the token is root-equivalent, so do not expose it on the
   public internet without a second factor.)
+- **Theming subsystem (MUST):** the dashboard MUST ship an **original, owned default theme** (a
+  distinct dark, techno/arcane CITADEL-style visual identity — its own color tokens, typography
+  scale, spacing, surface/elevation treatment), authored **clean-room from scratch** (MUST NOT copy
+  or adapt any existing stylesheet), implemented as **CSS custom properties / design tokens** so the
+  whole UI re-themes from one token set. A **theme switcher** in the UI MUST let the operator change
+  theme at **runtime with no reload** (swap the token set live). Ship **≥2 themes** (the original
+  default + at least one alternate). The selected theme MUST be **persisted per user** (client-side,
+  e.g. localStorage, applied before first paint to avoid a flash-of-unstyled; the supervisor MAY also
+  persist it as an operator setting so it follows the operator across devices). Per-agent **accent
+  colors** (§4) compose with the active theme as an independent axis (accents are agent identity;
+  theme is the surrounding chrome). The default theme is the product's face: it MUST look finished
+  out of the box, not a framework default.
+- **GUI language switch / runtime i18n (MUST):** ALL operator-facing UI strings MUST go through an
+  **i18n layer** (keyed message catalogs — NEVER hardcoded literals in components) so the dashboard
+  can render in any shipped locale. A **language switcher** in the UI MUST let the operator change
+  the UI language **at runtime with no app/server restart and no page reload** (re-render from the
+  newly-active catalog). The selected language MUST be **persisted per user** (client-side, applied
+  before first paint; the supervisor MAY persist it as an operator setting so it follows the
+  operator). At minimum the system MUST ship **complete, first-class Hungarian and English** catalogs
+  (see §7a). The active UI language is **independent** of the language agents generate prose in
+  (operator may read an HU UI while an agent answers in EN, or vice-versa) — do not couple them. A
+  missing key in the active locale MUST fall back to the install-default locale (then to English) and
+  MUST NEVER render a raw key to the operator.
 
 ---
 
@@ -608,6 +668,10 @@ NOT success). Substrate detail (how the detached run is hosted) is the adapter's
     sole serializer of its input, ordering machine + human messages into one stream so direct human
     typing never races machine delivery and is recorded, attributed, in the ledger. A literal
     terminal attach, if offered, is read-mostly and never the control plane.
+14. **Language policy:** code/identifiers are English; operator-facing prose + UI are localized
+    through an i18n catalog (no hardcoded UI literals); ship **both HU+EN** complete and first-class;
+    operator-facing default is **Hungarian, switchable at runtime**; the install-wide default locale
+    is chosen **at install**; UI language and agent-prose language are independent axes.
 
 ---
 
@@ -618,6 +682,10 @@ LLM layer; inter-agent messaging + trust model; memory (tiers + FTS + ledger; em
 scheduled tasks + runner semantics + the learning-loop machinery; two-tier skills; kanban; idea box
 + autonomy ladder; security profiles + privilege gate + Operating Contract; vault; dashboard + API +
 auth + SSE; persistence/data model; single-supervisor + reconciler.
+**...also CORE:** the dashboard **theme system + theme switcher** and **i18n layer + language
+switcher** with **both first-class HU+EN catalogs** (§§7a, 17); the **one-command installer** +
+**prerequisites doc** (§23); and the **four required docs** — README, architecture, usage/operator
+guide, install guide (§23).
 
 **OPTIONAL / pluggable / omit for v1:** the channel-plugin recovery layer (replace with a
 first-class client); Studio/media gen; background tasks; the file browser; MCP connector catalog +
@@ -625,7 +693,10 @@ homelab/service monitoring + region-specific connectors; specific scheduled-task
 (grant-watcher, supply-chain scan, vault-curation, morning-brief content); specific local-model /
 alternate-provider integrations; the "stuck" watcher family; OS-keychain master-key backend; the
 self-update mechanism; voice transcription / inline buttons. **All branding, roster names, accent
-colors, prose language, timezone, ports and paths are CONFIG, not code — ship English defaults.**
+colors, timezone, ports and paths are CONFIG, not code (do NOT hardcode a roster). Language is NOT
+omit-by-default config:** the dashboard theme system + theme switcher, the i18n layer + language
+switcher, and **both first-class HU+EN catalogs** are **CORE** (§§7a, 17); the operator-facing
+default is **Hungarian, switchable**, with the install-wide default locale chosen at install (§23).
 
 ---
 
@@ -661,8 +732,35 @@ colors, prose language, timezone, ports and paths are CONFIG, not code — ship 
   the ledger-continuity constraint tested.
 - Original code authored from THIS spec (clean-room) — own architecture, names, structure. The spec
   describes behavior; you choose the design.
-- Ship sensible English defaults + a single config surface; no hardcoded roster/locale/paths.
-- A short README + an architecture doc so it can be open-sourced or handed off.
+- Ship a single config surface; no hardcoded roster/locale/paths; ship **both HU+EN** locales with
+  the default chosen at install (§7a).
+- **Easy install (MUST):** ship a **single-command install path** (one script / documented
+  one-liner) that takes a clean supported host to a running system: install/verify runtime deps,
+  create the state dir (0600), generate the dashboard bearer + master key, scaffold the seed roster,
+  run migrations, **prompt for or accept the default locale (§7a)**, and print the bootstrap URL to
+  stderr. The install MUST be **idempotent** (re-running is safe; never overwrites operator-edited
+  files or rotates existing secrets) and MUST **fail fast with an actionable message** on any
+  missing/incompatible prerequisite. It MUST NOT require or set `ANTHROPIC_API_KEY` (§5).
+- **Prerequisites doc (MUST):** a deliverable that **lists every prerequisite** with
+  **minimum/tested versions** (OS/arch support, Node/runtime version, package manager, the
+  **subscription-authenticated interactive Claude Code CLI** + how its OAuth login is established, the
+  chosen runtime substrate e.g. tmux, SQLite if external, optional embedding/media backends) **AND
+  tells the operator how to install each one** (concrete per-OS commands or links), plus how to
+  verify the subscription auth is active and that **no API key is present** in the target env. The
+  install script SHOULD check these same prerequisites.
+- **Required documentation deliverables (MUST — all four):**
+  1. **README** — what the system is, quick start, the one-command install pointer, links to the
+     other docs.
+  2. **Architecture doc** — module boundaries, data model, the agent-runtime / channel / LLM seams,
+     the trust & privilege model, the supervisor/single-owner design.
+  3. **Usage / operator guide** — day-to-day operation: chatting with the hub, the dashboard (incl.
+     the **theme switcher and language switcher**), kanban/idea box, scheduled tasks, watching/typing
+     to a live agent, managing the vault, autonomy ladder.
+  4. **Install guide** — full install walkthrough referencing the **prerequisites doc** (above) and
+     the one-command installer, the default-locale choice, first-run bootstrap URL, and the
+     HTTPS/exposure caveat (§17).
+  Docs MUST be authored so the project can be open-sourced or handed off, and (per §7a) the
+  **operator-facing docs ship in both Hungarian and English**.
 
 ---
 
