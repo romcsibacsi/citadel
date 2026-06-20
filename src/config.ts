@@ -38,6 +38,15 @@ export const OPERATOR_AGENT_ID = 'operator'
 
 export const WEB_PORT = parseInt(env['WEB_PORT'] ?? '3420', 10)
 
+// Auto-compact: proactively inject /compact into a heavy-but-idle session before
+// its context window fills and the session wedges (halting dispatch when it is the
+// hub). Window-relative threshold (fraction of the model's own window) so it works
+// across the mixed 1M/200k fleet. See src/auto-compact.ts for the decision logic.
+export const AUTO_COMPACT_ENABLED = (env['AUTO_COMPACT_ENABLED'] ?? 'true') !== 'false'
+export const AUTO_COMPACT_THRESHOLD_FRACTION = Number(env['AUTO_COMPACT_THRESHOLD_FRACTION'] ?? '0.8')
+export const AUTO_COMPACT_INTERVAL_MS = parseInt(env['AUTO_COMPACT_INTERVAL_MS'] ?? '0', 10)
+export const AUTO_COMPACT_MIN_INTERVAL_MS = parseInt(env['AUTO_COMPACT_MIN_INTERVAL_MS'] ?? '600000', 10)
+
 export const WEB_HOST = env['WEB_HOST'] ?? '127.0.0.1'
 export const DASHBOARD_PUBLIC_URL = env['DASHBOARD_PUBLIC_URL'] ?? ''
 export const OLLAMA_URL = env['OLLAMA_URL'] ?? 'http://localhost:11434'

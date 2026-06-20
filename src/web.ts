@@ -19,6 +19,7 @@ import { startStuckToolCallWatcher } from './web/stuck-tool-call-watcher.js'
 import { startStuckPermissionPromptWatcher } from './web/stuck-permission-prompt-watcher.js'
 import { startReauthHealer } from './web/reauth-healer.js'
 import { startAutoRestartRunner } from './web/auto-restart-runner.js'
+import { startAutoCompactRunner } from './web/auto-compact-runner.js'
 import { startReaperRunner } from './web/reaper.js'
 import { logger } from './logger.js'
 import { tryHandleProfiles } from './web/routes/profiles.js'
@@ -273,6 +274,9 @@ export function startWebServer(port = 3420): http.Server {
   const autoRestartInterval = startAutoRestartRunner()
   logger.info('Auto-restart runner started (60s poll, 40s offset)')
 
+  const autoCompactInterval = startAutoCompactRunner()
+  logger.info('Auto-compact runner started (2min poll, 50s offset)')
+
   const reaperInterval = startReaperRunner()
   logger.info('Reaper runner started (5min poll, 50s offset)')
 
@@ -350,6 +354,7 @@ export function startWebServer(port = 3420): http.Server {
     clearInterval(stuckPermPromptInterval)
     if (reauthHealerInterval) clearInterval(reauthHealerInterval)
     clearInterval(autoRestartInterval)
+    clearInterval(autoCompactInterval)
     clearInterval(reaperInterval)
     clearInterval(updateCheckerInterval)
     return origClose(cb)
