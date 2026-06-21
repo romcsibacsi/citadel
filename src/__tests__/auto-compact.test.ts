@@ -43,52 +43,75 @@ describe('normalizeAutoCompactConfig', () => {
 
 const BASE: AutoCompactConfig = { enabled: true, thresholdFraction: 0.8, intervalMs: 0, minIntervalMs: 600_000 }
 
+// Most cases don't exercise the seed/scheduled base; default firstSeenAtMs to null.
+type DueArgs = Parameters<typeof compactDue>[0]
+const due = (a: Omit<DueArgs, 'firstSeenAtMs'> & Partial<Pick<DueArgs, 'firstSeenAtMs'>>): boolean =>
+  compactDue({ firstSeenAtMs: null, ...a })
+
 describe('compactDue - threshold trigger', () => {
   it('fires when live context reaches the fraction of the window (1M model)', () => {
     // 800k of a 1M window == 80% -> fire.
-    expect(compactDue({ contextTokens: 800_000, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(true)
+    expect(due({ contextTokens: 800_000, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(true)
   })
   it('does NOT fire below the fraction', () => {
-    expect(compactDue({ contextTokens: 700_000, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
+    expect(due({ contextTokens: 700_000, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
   })
   it('scales to the 200k window (160k == 80%)', () => {
-    expect(compactDue({ contextTokens: 160_000, windowTokens: 200_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(true)
-    expect(compactDue({ contextTokens: 150_000, windowTokens: 200_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
+    expect(due({ contextTokens: 160_000, windowTokens: 200_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(true)
+    expect(due({ contextTokens: 150_000, windowTokens: 200_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
   })
   it('does NOT fire when context could not be read (null)', () => {
-    expect(compactDue({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: BASE })).toBe(false)
   })
 })
 
 describe('compactDue - anti-thrash floor', () => {
   it('suppresses a second compact inside minIntervalMs even when over threshold', () => {
-    expect(compactDue({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: 1_000, nowMs: 1_000 + 60_000, cfg: BASE })).toBe(false)
+    expect(due({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: 1_000, nowMs: 1_000 + 60_000, cfg: BASE })).toBe(false)
   })
   it('allows it again once the floor has elapsed', () => {
-    expect(compactDue({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: 1_000, nowMs: 1_000 + 700_000, cfg: BASE })).toBe(true)
+    expect(due({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: 1_000, nowMs: 1_000 + 700_000, cfg: BASE })).toBe(true)
   })
 })
 
 describe('compactDue - scheduled trigger (window-independent fallback)', () => {
   const sched: AutoCompactConfig = { ...BASE, thresholdFraction: 0, intervalMs: 12 * 3_600_000 }
   it('fires after intervalMs since the last compact, regardless of context', () => {
-    expect(compactDue({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: 0, nowMs: 13 * 3_600_000, cfg: sched })).toBe(true)
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: 0, nowMs: 13 * 3_600_000, cfg: sched })).toBe(true)
   })
   it('does NOT fire before the interval elapses', () => {
-    expect(compactDue({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: 0, nowMs: 6 * 3_600_000, cfg: sched })).toBe(false)
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: 0, nowMs: 6 * 3_600_000, cfg: sched })).toBe(false)
   })
-  it('never fires before the seed (lastCompactAtMs null)', () => {
-    expect(compactDue({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 999 * 3_600_000, cfg: sched })).toBe(false)
+  it('never fires before the seed (lastCompactAtMs AND firstSeenAtMs null)', () => {
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 999 * 3_600_000, cfg: sched })).toBe(false)
+  })
+  it('measures from firstSeenAtMs when never compacted (scheduled base = the seed)', () => {
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, firstSeenAtMs: 0, nowMs: 13 * 3_600_000, cfg: sched })).toBe(true)
+    expect(due({ contextTokens: null, windowTokens: 1_000_000, lastCompactAtMs: null, firstSeenAtMs: 0, nowMs: 6 * 3_600_000, cfg: sched })).toBe(false)
+  })
+})
+
+describe('compactDue - #296 seed/anti-thrash decoupling (restart-at-over-threshold)', () => {
+  it('a re-seed (lastCompactAtMs null + firstSeen=now) does NOT suppress the threshold when over-threshold', () => {
+    // The hub session continues across a dashboard restart; the runner re-seeds firstSeen=now and clears
+    // lastCompact. If the hub is over-threshold, the threshold must fire IMMEDIATELY, not be suppressed for
+    // minIntervalMs -- the #296 incident scenario (unprotected wedge at restart).
+    const now = 5_000_000
+    expect(due({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: null, firstSeenAtMs: now, nowMs: now, cfg: BASE })).toBe(true)
+  })
+  it('the anti-thrash floor STILL applies to an actual recent compaction (keyed on lastCompactAtMs, not the seed)', () => {
+    const t0 = 5_000_000
+    expect(due({ contextTokens: 900_000, windowTokens: 1_000_000, lastCompactAtMs: t0, firstSeenAtMs: t0 - 999_999, nowMs: t0 + 60_000, cfg: BASE })).toBe(false)
   })
 })
 
 describe('compactDue - master toggle', () => {
   it('never fires when disabled, even far over threshold', () => {
     const off: AutoCompactConfig = { ...BASE, enabled: false }
-    expect(compactDue({ contextTokens: 999_999, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: off })).toBe(false)
+    expect(due({ contextTokens: 999_999, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: off })).toBe(false)
   })
   it('thresholdFraction=0 disables the threshold trigger', () => {
     const noThresh: AutoCompactConfig = { ...BASE, thresholdFraction: 0 }
-    expect(compactDue({ contextTokens: 999_999, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: noThresh })).toBe(false)
+    expect(due({ contextTokens: 999_999, windowTokens: 1_000_000, lastCompactAtMs: null, nowMs: 0, cfg: noThresh })).toBe(false)
   })
 })

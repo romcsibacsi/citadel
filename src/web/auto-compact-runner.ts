@@ -39,9 +39,13 @@ import {
 const INITIAL_DELAY_MS = 50_000
 const INTERVAL_MS = 120_000
 
-// agent name -> last auto-compact time (ms), also seeded on first sight.
-// In-memory: a dashboard restart re-seeds (at worst defers one check).
+// agent name -> last ACTUAL auto-compact time (ms); absent until the first real compaction, so the
+// anti-thrash floor never suppresses on a re-seed. In-memory: a dashboard restart clears it (correct -- the
+// floor must not carry across a restart, and the threshold must fire if the hub is over-threshold then).
 const lastCompact = new Map<string, number>()
+// agent name -> first-sight time (ms): the SCHEDULED-trigger base only (NOT the anti-thrash floor). Re-seeded
+// at a dashboard restart (at worst shifts one scheduled slot).
+const firstSeen = new Map<string, number>()
 
 function cfg(): AutoCompactConfig {
   return {
@@ -88,16 +92,22 @@ function checkAgent(name: string, nowMs: number): void {
   // Sub-agents must be up; the hub is launchd-managed (always considered present).
   if (name !== MAIN_AGENT_ID && !isAgentRunning(name)) return
 
-  // Seed on first sight so the scheduled trigger measures from boot, not 1970.
-  if (!lastCompact.has(name)) {
-    lastCompact.set(name, nowMs)
-    return
-  }
+  // Seed first-sight so the SCHEDULED trigger measures from boot, not 1970. This does NOT gate the threshold
+  // trigger -- the threshold must be able to fire on the very first sight (e.g. a hub already over-threshold
+  // when the runner re-seeds at a dashboard restart), which the previous seed-then-return suppressed.
+  if (!firstSeen.has(name)) firstSeen.set(name, nowMs)
 
   const t = targetFor(name)
   const contextTokens = readContextTokensFromProjectDir(t.dir, t.configDir)
   const windowTokens = windowFor(t)
-  if (!compactDue({ contextTokens, windowTokens, lastCompactAtMs: lastCompact.get(name) ?? null, nowMs, cfg: c })) {
+  if (!compactDue({
+    contextTokens,
+    windowTokens,
+    lastCompactAtMs: lastCompact.get(name) ?? null,
+    firstSeenAtMs: firstSeen.get(name) ?? null,
+    nowMs,
+    cfg: c,
+  })) {
     return
   }
 

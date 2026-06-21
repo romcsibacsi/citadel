@@ -81,12 +81,16 @@ export function normalizeAutoCompactConfig(raw: unknown): AutoCompactConfig {
  * the last compact (window-independent safety net) -- but never within
  * minIntervalMs of the previous compact (anti-thrash).
  *
- * The scheduled trigger requires a non-null lastCompactAtMs, so the runner's
- * seed-on-first-sight means it fires `intervalMs` after the seed, not at boot.
+ * The anti-thrash floor and the scheduled base are DECOUPLED from the seed: the floor keys on the last
+ * ACTUAL compaction (lastCompactAtMs, null until the first real compact), NOT on first-sight, so a re-seed
+ * at a dashboard restart can never suppress the threshold trigger. The scheduled trigger measures from the
+ * last compaction, or from firstSeenAtMs (the seed) when there has been no compaction, so it does not fire
+ * at boot but stays window-independent.
  *
  * @param contextTokens   Live context size, or null if it could not be read.
  * @param windowTokens    The model's context window (contextWindowForModel).
- * @param lastCompactAtMs When this session was last auto-compacted, or null.
+ * @param lastCompactAtMs When this session was last ACTUALLY auto-compacted, or null if never.
+ * @param firstSeenAtMs   When the runner first saw this session (seed), or null.
  * @param nowMs           Current clock (ms).
  * @param cfg             The resolved config.
  */
@@ -94,18 +98,22 @@ export function compactDue(args: {
   contextTokens: number | null
   windowTokens: number
   lastCompactAtMs: number | null
+  firstSeenAtMs: number | null
   nowMs: number
   cfg: AutoCompactConfig
 }): boolean {
-  const { contextTokens, windowTokens, lastCompactAtMs, nowMs, cfg } = args
+  const { contextTokens, windowTokens, lastCompactAtMs, firstSeenAtMs, nowMs, cfg } = args
   if (!cfg.enabled) return false
-  // Anti-thrash: never compact twice inside the floor window.
+  // Anti-thrash keyed on the last ACTUAL compaction ONLY (never the seed): a hub that is over-threshold
+  // when the runner re-seeds at a dashboard restart (its session continues across the restart) is compacted
+  // immediately, not left unprotected for minIntervalMs -- the #296 incident scenario.
   if (lastCompactAtMs !== null && nowMs - lastCompactAtMs < cfg.minIntervalMs) return false
-  // Threshold trigger: context crossed the fraction of its own window.
+  // Threshold trigger: context crossed the fraction of its own window -- fires immediately, even on first sight.
   if (cfg.thresholdFraction > 0 && contextTokens !== null && windowTokens > 0) {
     if (contextTokens >= cfg.thresholdFraction * windowTokens) return true
   }
-  // Scheduled trigger: window-independent fallback (only after the seed).
-  if (cfg.intervalMs > 0 && lastCompactAtMs !== null && nowMs - lastCompactAtMs >= cfg.intervalMs) return true
+  // Scheduled trigger: window-independent fallback, measured from the last compaction or (if never) the seed.
+  const scheduledBase = lastCompactAtMs ?? firstSeenAtMs
+  if (cfg.intervalMs > 0 && scheduledBase !== null && nowMs - scheduledBase >= cfg.intervalMs) return true
   return false
 }
