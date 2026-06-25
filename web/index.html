@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="hu" data-theme="obsidian" data-density="comfortable">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Dashboard</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <script>
+      /* Pre-paint preference application: theme, density, glow, accent and
+       * language land on <html> before any CSS/JS loads, so there is NO
+       * flash-of-unstyled (SPEC §6). */
+      (function () {
+        try {
+          var d = document.documentElement;
+          var themes = ['obsidian', 'stark', 'arcane-forge', 'light', 'dark'];
+          var theme = localStorage.getItem('ui.theme');
+          if (theme && themes.indexOf(theme) !== -1) d.dataset.theme = theme;
+          var density = localStorage.getItem('ui.density');
+          if (density === 'compact') d.dataset.density = 'compact';
+          var glow = localStorage.getItem('ui.glow');
+          if (glow !== null) d.style.setProperty('--glow', glow);
+          var accent = localStorage.getItem('ui.accent');
+          if (accent) d.style.setProperty('--ac', accent);
+          var lang = localStorage.getItem('ui.lang');
+          if (lang) d.lang = lang;
+        } catch (e) {
+          /* storage unavailable: defaults stand */
+        }
+      })();
+    </script>
+    <link
+      rel="preconnect"
+      href="https://fonts.googleapis.com"
+    />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Rajdhani:wght@500;600;700&family=Chakra+Petch:wght@400;500;600&family=Share+Tech+Mono&family=Cinzel:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/tokens.css" />
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <div id="app" class="app-root" aria-live="polite"></div>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

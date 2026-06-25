@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(git --version)",
+      "Bash(tmux -V)",
+      "Bash(claude --version)",
+      "Bash(node -e \"const s=require\\('node:sqlite'\\); console.log\\('node:sqlite OK'\\);\")",
+      "Bash(env)"
+    ]
+  }
+}

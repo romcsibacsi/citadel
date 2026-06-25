@@ -1,0 +1,20 @@
+{
+  "//": "#386 FÁZIS-0: the PUBLIC core build. Extends the full build but EXCLUDES the KKV vertical",
+  "//1": "(cs/bookkeeper/portal/modules + the private kkv-main entry), so dist-public/ contains ZERO",
+  "//2": "vertical code. Proves the core compiles+runs standalone (default-deny by absence). The full",
+  "//3": "tsconfig.build.json stays the KKV build + the test/typecheck compile (boundary *.test.ts need",
+  "//4": "modules/). 'exclude' is REPLACED (not merged) by a child tsconfig, so the base excludes are repeated.",
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "dist-public"
+  },
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/testing/**",
+    "src/cs/**",
+    "src/bookkeeper/**",
+    "src/portal/**",
+    "src/modules/**",
+    "src/app/kkv-main.ts"
+  ]
+}

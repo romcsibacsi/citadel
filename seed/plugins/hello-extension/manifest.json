@@ -1,0 +1,9 @@
+{
+  "id": "hello-extension",
+  "name": "Hello Extension",
+  "version": "1.0.0",
+  "author": "Orchestrator (reference)",
+  "description": "Reference extension plugin: registers a view, a bearer-gated route, a scheduled task, and an agent tool — the smallest end-to-end example of the host API.",
+  "apiVersion": 1,
+  "capabilities": ["view", "route", "scheduledTask", "agentTool"]
+}

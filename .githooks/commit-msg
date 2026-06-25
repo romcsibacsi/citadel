@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# CITADEL commit-msg hook — strip the "Co-Authored-By: …claude/anthropic…" trailer.
+#
+# WHY: GitHub renders that trailer as a co-author chip ("… and claude") on every
+# commit. CITADEL is the operator's product/repo and that branding is unwanted.
+# Stripping it from history (the B rewrite) is pointless unless NEW commits stay
+# clean — the fleet agents are Claude Code instances that add this trailer by
+# default. This hook removes it on EVERY commit, from EVERY committer (dev session
+# or agent), because all worktrees share this repo's git dir + config.
+# See memory/no-claude-coauthor-trailer.md.
+#
+# SAFETY: a commit-msg hook that exits non-zero blocks the commit. This one is
+# written to ALWAYS exit 0 — at worst it leaves the message untouched. It must
+# never wedge a fleet commit.
+#
+# Matches the same pattern the one-shot history rewrite used:
+#   /^[[:space:]]*co-authored-by:.*(claude|anthropic)/Id   (case-insensitive)
+# so legitimate human Co-authored-by lines (if ever used) are preserved.
+
+set +e
+msg_file="$1"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+sed -i -E '/^[[:space:]]*co-authored-by:.*(claude|anthropic)/Id' "$msg_file" 2>/dev/null || true
+
+exit 0

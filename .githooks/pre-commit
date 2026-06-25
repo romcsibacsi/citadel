@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# CITADEL #44 L1 worktree-isolation guard (pre-commit). DORMANT unless
+# git config citadel.worktree.enforceL1=true. Delegates to the shared guard.
+exec "$(dirname "$0")/citadel-worktree-guard.sh" pre-commit

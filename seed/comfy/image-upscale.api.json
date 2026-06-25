@@ -1,0 +1,7 @@
+{
+  "_comment": "ComfyUI API-format upscale graph (FIX-plugin-comfy-workflows §2). An upscale model (e.g. 4x-UltraSharp / RealESRGAN) enlarges a source image. Requires an upscale model on the box — the service probes hasNode('UpscaleModelLoader') first. <<upscale_model>> is a filename from /object_info/UpscaleModelLoader; <<source_image>> from /upload/image.",
+  "10": { "class_type": "LoadImage", "inputs": { "image": "<<source_image>>" } },
+  "20": { "class_type": "UpscaleModelLoader", "inputs": { "model_name": "<<upscale_model>>" } },
+  "21": { "class_type": "ImageUpscaleWithModel", "inputs": { "upscale_model": ["20", 0], "image": ["10", 0] } },
+  "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "<<prefix>>", "images": ["21", 0] } }
+}

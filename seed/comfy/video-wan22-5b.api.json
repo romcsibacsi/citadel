@@ -1,0 +1,20 @@
+{
+  "_comment": "ComfyUI API-format graph for Wan 2.2 TI2V-5B (native Wan nodes, no custom wrapper). The 5B model does BOTH text->video (omit node 50 + the start_image input) and image->video (include node 50 LoadImage + set inputs.start_image of node 55 to [\"50\", 0]). Replace <<tokens>>; numeric tokens MUST be real JSON numbers. The 5B uses wan2.2_vae. fps default 24. frames must be 4n+1 (5,9,...121). This is the smaller/faster fallback path; the operator's DEFAULT is the A14B graph (video-wan22-14b.api.json).",
+  "_t2v_vs_i2v": "For i2v: add  \"50\": { \"class_type\": \"LoadImage\", \"inputs\": { \"image\": \"<<uploaded_input_name>>\" } }  AND add  \"start_image\": [\"50\", 0]  into node 55's inputs. For t2v: omit node 50 and the start_image input entirely.",
+  "37": { "class_type": "UNETLoader", "inputs": { "unet_name": "wan2.2_ti2v_5B_fp16.safetensors", "weight_dtype": "default" } },
+  "38": { "class_type": "CLIPLoader", "inputs": { "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan" } },
+  "39": { "class_type": "VAELoader", "inputs": { "vae_name": "wan2.2_vae.safetensors" } },
+  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "<<prompt>>", "clip": ["38", 0] } },
+  "7": { "class_type": "CLIPTextEncode", "inputs": { "text": "<<negative>>", "clip": ["38", 0] } },
+  "55": { "class_type": "Wan22ImageToVideoLatent", "inputs": {
+    "vae": ["39", 0], "width": "<<width>>", "height": "<<height>>", "length": "<<frames>>", "batch_size": 1
+  } },
+  "3": { "class_type": "KSampler", "inputs": {
+    "seed": "<<seed>>", "steps": "<<steps>>", "cfg": "<<cfg>>",
+    "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+    "model": ["37", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["55", 0]
+  } },
+  "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["39", 0] } },
+  "40": { "class_type": "CreateVideo", "inputs": { "images": ["8", 0], "fps": "<<fps>>" } },
+  "41": { "class_type": "SaveVideo", "inputs": { "video": ["40", 0], "filename_prefix": "studio/reel", "format": "mp4", "codec": "h264" } }
+}

@@ -1,0 +1,33 @@
+[Unit]
+# Factory template (FIX-factory-clean §A.4): install.sh fills the __PLACEHOLDERS__
+# from the installing user + chosen directory, so the shipped artifact carries no
+# personal user/paths. Generated unit name/description rebrand via the installer.
+Description=Multi-agent orchestrator supervisor
+Documentation=file:__INSTALL_DIR__/docs/INSTALL.hu.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__INSTALL_DIR__
+# the claude CLI usually lives in the user's npm-global bin; node is resolved at install time.
+Environment=PATH=__HOME__/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=__HOME__
+Environment=NODE_NO_WARNINGS=1
+# Subscription-billing invariant (SPEC §5/§20.11): never let a billing-flipping
+# variable into the supervisor's environment.
+UnsetEnvironment=ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX
+ExecStart=__NODE__ --disable-warning=ExperimentalWarning __INSTALL_DIR__/dist/app/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+# KillMode=process (SPEC §3a): stop/restart kills ONLY the supervisor process,
+# NOT the dedicated tmux server it talks to — so the agent sessions persist
+# across a supervisor restart and the new supervisor ADOPTS them. To fully stop
+# the fleet (including agents): tmux -L <socket> kill-server.
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

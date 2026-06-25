@@ -1,0 +1,355 @@
+/*
+ * Dashboard design tokens — authored clean-room from the design spec.
+ *
+ * One token CONTRACT; every component reads ONLY these vars. Themes just remap
+ * the contract. Legacy alias tokens (--surface-*, --ink-*, --sp-*, …) are kept
+ * so the pre-existing views re-skin automatically without edits — they resolve
+ * to the active theme's contract values at use time.
+ *
+ * Axes applied on <html>: data-theme (5 themes), data-density (comfortable|
+ * compact), and the scalars --glow (0..1) and --ac (per-agent / global accent).
+ */
+
+/* ---- theme-independent scales + defaults ---- */
+:root {
+  /* spacing scale (density overrides these) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* type scale */
+  --fs-xs: 0.6875rem;
+  --fs-s: 0.8125rem;
+  --fs-m: 0.9375rem; /* base 15px */
+  --fs-l: 1.0625rem;
+  --fs-xl: 1.375rem;
+  --fs-display: 1.75rem;
+  --lh: 1.5;
+
+  /* motion */
+  --transition: 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-fast: 0.14s;
+  --t-med: 0.24s;
+
+  /* first-class scalars (overridable at runtime, pre-paint) */
+  --glow: 0.6;
+  --accent-violet: #9b79ff;
+  --accent-gold: #f2c879;
+
+  color-scheme: dark;
+}
+
+/* =====================================================================
+   OBSIDIAN COMMAND — default: dark, dual cyan + violet, gold decoration
+   ===================================================================== */
+:root,
+:root[data-theme='obsidian'] {
+  --bg: #0a0a12;
+  --bg-card: #14141f;
+  --bg-card-hover: #1b1b28;
+  --bg-input: #0f0f1a;
+  --bg-modal: #14141f;
+  --bg-code: #06060b;
+
+  --text: #ececf4;
+  --text-secondary: #a6a6bc;
+  --text-muted: #6c6c84;
+
+  --border: #262633;
+  --border-focus: #34d6f0;
+
+  --accent: #34d6f0;
+  --accent-hover: #74ecff;
+  --accent-soft: rgba(52, 214, 240, 0.12);
+
+  --danger: #ff5067;
+  --danger-soft: rgba(255, 80, 103, 0.13);
+  --danger-hover: #ff7384;
+  --success: #41e0a3;
+  --success-soft: rgba(65, 224, 163, 0.13);
+  --info: #4f8cff;
+  --info-soft: rgba(79, 140, 255, 0.13);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --glow: 0.6;
+  --accent-violet: #9b79ff;
+  --accent-gold: #f2c879;
+  --ac: #9b79ff;
+
+  /* ambient: cyan from top-right, violet from bottom-left */
+  --ambient-1: radial-gradient(900px 520px at 92% -8%, rgba(52, 214, 240, 0.1), transparent 60%);
+  --ambient-2: radial-gradient(820px 520px at 4% 108%, rgba(155, 121, 255, 0.1), transparent 60%);
+  --grid-backdrop: none;
+  color-scheme: dark;
+}
+
+/* =====================================================================
+   STARK HUD — cyan arc-reactor HUD, technical grid + corner brackets
+   ===================================================================== */
+:root[data-theme='stark'] {
+  --bg: #070c13;
+  --bg-card: #0a111b;
+  --bg-card-hover: #132235;
+  --bg-input: #0e1825;
+  --bg-modal: #0a111b;
+  --bg-code: #04070c;
+
+  --text: #eaf4ff;
+  --text-secondary: #8499ae;
+  --text-muted: #54677c;
+
+  --border: rgba(120, 196, 255, 0.12);
+  --border-focus: #46e6ff;
+
+  --accent: #46e6ff;
+  --accent-hover: #8bf4ff;
+  --accent-soft: rgba(70, 230, 255, 0.12);
+
+  --danger: #ff5468;
+  --danger-soft: rgba(255, 84, 104, 0.13);
+  --danger-hover: #ff7788;
+  --success: #3df0c0;
+  --success-soft: rgba(61, 240, 192, 0.13);
+  --info: #1893c2;
+  --info-soft: rgba(24, 147, 194, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-lg: 10px;
+
+  --font-display: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Chakra Petch', system-ui, sans-serif;
+  --font-mono: 'Share Tech Mono', ui-monospace, monospace;
+
+  --glow: 0.7;
+  --accent-violet: #6fb6ff;
+  --accent-gold: #46e6ff;
+  --ac: #46e6ff;
+
+  --ambient-1: radial-gradient(900px 520px at 90% -10%, rgba(70, 230, 255, 0.08), transparent 62%);
+  --ambient-2: radial-gradient(700px 480px at 6% 110%, rgba(70, 230, 255, 0.05), transparent 62%);
+  /* faint technical grid backdrop */
+  --grid-backdrop:
+    linear-gradient(rgba(70, 230, 255, 0.04) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(70, 230, 255, 0.04) 1px, transparent 1px) 0 0 / 44px 44px;
+  color-scheme: dark;
+}
+
+/* =====================================================================
+   ARCANE FORGE — gold + ember on warm obsidian, serif display
+   ===================================================================== */
+:root[data-theme='arcane-forge'] {
+  --bg: #110e0a;
+  --bg-card: #1d1812;
+  --bg-card-hover: #2c241a;
+  --bg-input: #0e0b08;
+  --bg-modal: #1d1812;
+  --bg-code: #17130d;
+
+  --text: #ede2cc;
+  --text-secondary: #c5b79c;
+  --text-muted: #94886f;
+
+  --border: #3a3022;
+  --border-focus: #e6b249;
+
+  --accent: #e6b249;
+  --accent-hover: #f6d27a;
+  --accent-soft: rgba(230, 178, 73, 0.13);
+
+  --danger: #d24430;
+  --danger-soft: rgba(210, 68, 48, 0.15);
+  --danger-hover: #e25c44;
+  --success: #6fae84;
+  --success-soft: rgba(111, 174, 132, 0.15);
+  --info: #6fb0b8;
+  --info-soft: rgba(111, 176, 184, 0.15);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+  --radius: 7px;
+  --radius-sm: 5px;
+  --radius-lg: 10px;
+
+  --font-display: 'Cinzel', Georgia, 'Times New Roman', serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --glow: 0.5;
+  --accent-violet: #c08bd8;
+  --accent-gold: #e6b249;
+  --ac: #f0822e;
+
+  --ambient-1: radial-gradient(900px 520px at 90% -10%, rgba(230, 178, 73, 0.09), transparent 60%);
+  --ambient-2: radial-gradient(800px 520px at 6% 108%, rgba(240, 130, 46, 0.08), transparent 60%);
+  --grid-backdrop: none;
+  color-scheme: dark;
+}
+
+/* =====================================================================
+   LIGHT — warm parchment
+   ===================================================================== */
+:root[data-theme='light'] {
+  --bg: #faf9f5;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f5f4ed;
+  --bg-input: #f0eee6;
+  --bg-modal: #ffffff;
+  --bg-code: #f0eee6;
+
+  --text: #141413;
+  --text-secondary: #5b5a53;
+  --text-muted: #87867f;
+
+  --border: #d1cfc5;
+  --border-focus: #d97757;
+
+  --accent: #d97757;
+  --accent-hover: #c4634a;
+  --accent-soft: rgba(217, 119, 87, 0.12);
+
+  --danger: #bf4d43;
+  --danger-soft: rgba(191, 77, 67, 0.1);
+  --danger-hover: #a83c33;
+  --success: #788c5d;
+  --success-soft: rgba(120, 140, 93, 0.14);
+  --info: #6a9bcc;
+  --info-soft: rgba(106, 155, 204, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.07);
+  --shadow-md: 0 8px 24px rgba(20, 20, 19, 0.1);
+  --shadow-lg: 0 24px 60px rgba(20, 20, 19, 0.15);
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --glow: 0.35;
+  --accent-violet: #8d6bd8;
+  --accent-gold: #b8860b;
+  --ac: #d97757;
+
+  --ambient-1: radial-gradient(900px 520px at 92% -8%, rgba(217, 119, 87, 0.06), transparent 60%);
+  --ambient-2: radial-gradient(800px 520px at 4% 108%, rgba(141, 107, 216, 0.05), transparent 60%);
+  --grid-backdrop: none;
+  color-scheme: light;
+}
+
+/* =====================================================================
+   DARK — neutral cool grey-blue fallback, system fonts
+   ===================================================================== */
+:root[data-theme='dark'] {
+  --bg: #0f1115;
+  --bg-card: #181b22;
+  --bg-card-hover: #20242d;
+  --bg-input: #12151b;
+  --bg-modal: #181b22;
+  --bg-code: #0a0c10;
+
+  --text: #e7eaf0;
+  --text-secondary: #a3abb9;
+  --text-muted: #6b7280;
+
+  --border: #2a2f3a;
+  --border-focus: #6ea8fe;
+
+  --accent: #6ea8fe;
+  --accent-hover: #97c2ff;
+  --accent-soft: rgba(110, 168, 254, 0.13);
+
+  --danger: #f0596b;
+  --danger-soft: rgba(240, 89, 107, 0.13);
+  --danger-hover: #ff7585;
+  --success: #4cd99a;
+  --success-soft: rgba(76, 217, 154, 0.13);
+  --info: #6ea8fe;
+  --info-soft: rgba(110, 168, 254, 0.13);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+
+  --font-display: system-ui, 'Segoe UI', sans-serif;
+  --font-body: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', monospace;
+
+  --glow: 0.45;
+  --accent-violet: #9b8cff;
+  --accent-gold: #d8b25a;
+  --ac: #6ea8fe;
+
+  --ambient-1: radial-gradient(900px 520px at 92% -8%, rgba(110, 168, 254, 0.07), transparent 60%);
+  --ambient-2: radial-gradient(800px 520px at 4% 108%, rgba(155, 140, 255, 0.05), transparent 60%);
+  --grid-backdrop: none;
+  color-scheme: dark;
+}
+
+/* ---- density: compact trims the spacing scale (cards/nav/grid) ---- */
+:root[data-density='compact'] {
+  --sp-2: 6px;
+  --sp-3: 9px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 22px;
+}
+
+/* ---- legacy aliases: pre-existing views read these; map to the contract ---- */
+:root {
+  --surface-0: var(--bg);
+  --surface-1: var(--bg-card);
+  --surface-2: var(--bg-card-hover);
+  --surface-3: var(--bg-card-hover);
+  --surface-overlay: var(--bg-modal);
+
+  --ink-1: var(--text);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--text-muted);
+  --ink-inverse: var(--bg);
+
+  --edge: var(--border);
+  --edge-strong: var(--border-focus);
+  --accent-ink: var(--accent-hover);
+
+  --ok: var(--success);
+  --busy: var(--info);
+  --err: var(--danger);
+  --warn: var(--accent-gold);
+  --idle: var(--text-muted);
+
+  --radius-s: var(--radius-sm);
+  --radius-m: var(--radius);
+  --radius-pill: 999px;
+
+  --font-ui: var(--font-body);
+
+  --agent-accent: var(--ac);
+}

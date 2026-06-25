@@ -1,0 +1,315 @@
+#!/usr/bin/env node
+/**
+ * agentctl — the agent-side CLI for the orchestrator API.
+ * Identity comes from the environment the supervisor launched the agent with:
+ *   ORCHESTRATOR_URL  — the API base (loopback by default)
+ *   AGENT_API_TOKEN   — this agent's scoped token (from is stamped server-side)
+ *   AGENT_ID          — informational; the token is authoritative
+ * Exit codes: 0 ok, 1 usage error, 2 API/transport error.
+ */
+
+const BASE = process.env.ORCHESTRATOR_URL;
+
+function fail(msg, code = 1) {
+  process.stderr.write(`agentctl: ${msg}\n`);
+  process.exit(code);
+}
+
+// The token comes from the per-agent 0600 file (preferred; never in argv/env
+// launch strings) or, for manual use, directly from AGENT_API_TOKEN.
+let TOKEN = process.env.AGENT_API_TOKEN;
+if (!TOKEN && process.env.AGENT_TOKEN_FILE) {
+  try {
+    const { readFileSync } = await import('node:fs');
+    TOKEN = readFileSync(process.env.AGENT_TOKEN_FILE, 'utf8').trim();
+  } catch {
+    fail(`cannot read AGENT_TOKEN_FILE: ${process.env.AGENT_TOKEN_FILE}`, 2);
+  }
+}
+
+if (!BASE || !TOKEN) fail('ORCHESTRATOR_URL and AGENT_TOKEN_FILE (or AGENT_API_TOKEN) must be set (launched outside the supervisor?)');
+
+async function call(method, path, body) {
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    fail(`cannot reach the orchestrator at ${BASE}: ${err.message}`, 2);
+  }
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = text === '' ? {} : JSON.parse(text);
+  } catch {
+    parsed = { raw: text };
+  }
+  if (!res.ok) fail(`${method} ${path} -> ${res.status}: ${parsed.error ?? text}`, 2);
+  return parsed;
+}
+
+// Like call(), but never exits the process — returns a result object so a
+// multi-step command (e.g. `mem merge`) can report per-item outcomes and
+// continue instead of aborting on the first non-owned / missing id.
+async function callSoft(method, path, body) {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let parsed;
+    try {
+      parsed = text === '' ? {} : JSON.parse(text);
+    } catch {
+      parsed = { raw: text };
+    }
+    return { ok: res.ok, status: res.status, error: parsed.error, body: parsed };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
+}
+
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (c) => (data += c));
+    process.stdin.on('end', () => resolve(data));
+  });
+}
+
+function flag(args, name) {
+  const i = args.indexOf(name);
+  if (i === -1) return [args, undefined];
+  const value = args[i + 1];
+  return [args.slice(0, i).concat(args.slice(i + 2)), value];
+}
+
+function out(obj) {
+  process.stdout.write(typeof obj === 'string' ? obj + '\n' : JSON.stringify(obj, null, 2) + '\n');
+}
+
+const [, , cmd, sub, ...rest] = process.argv;
+
+const USAGE = `usage:
+  agentctl msg send <agent|operator> <text...>
+  agentctl msg done <id> [result...]
+  agentctl msg fail <id> <error...>
+  agentctl msg threads
+  agentctl mem save <hot|warm|cold|shared> <text...> [--keywords "..."]
+  agentctl mem search <query...>
+  agentctl mem archive <id>        (soft-retire: server archives, never hard-deletes; own rows only)
+  agentctl mem merge <id...> --into <text...> [--category <c>] [--keywords "..."]
+  agentctl kanban add <title...> [--desc "..."] [--assignee <id>] [--priority <p>]
+  agentctl kanban board
+  agentctl kanban move <id> <planned|in_progress|waiting|done>
+  agentctl kanban comment <id> <text...>
+  agentctl idea add <title...> [--desc "..."]
+  agentctl panel create <goal...> [--solver id:angle ...] [--test "<cmd>"] [--category code_change]
+  agentctl panel get <id>
+  agentctl panel list
+  agentctl log <line...>
+  agentctl state save        (JSON on stdin)
+  agentctl state load
+  agentctl recall [chat]
+  agentctl dream write       (markdown on stdin; hub only)
+  agentctl dream read`;
+
+async function main() {
+  switch (`${cmd} ${sub}`) {
+    case 'msg send': {
+      const [to, ...words] = rest;
+      if (!to || words.length === 0) fail(USAGE);
+      // Fail loud on empty / dash-only bodies (e.g. a stray '-' from shell
+      // expansion) instead of POSTing a meaningless message.
+      const body = words.join(' ').trim();
+      if (/^[\s-]*$/.test(body)) fail('refusing to send an empty or dash-only message body');
+      out(await call('POST', '/api/messages', { to, body }));
+      break;
+    }
+    case 'msg done': {
+      const [id, ...words] = rest;
+      if (!id) fail(USAGE);
+      out(await call('POST', `/api/messages/${id}/status`, { status: 'done', result: words.join(' ') || undefined }));
+      break;
+    }
+    case 'msg fail': {
+      const [id, ...words] = rest;
+      if (!id || words.length === 0) fail(USAGE);
+      out(await call('POST', `/api/messages/${id}/status`, { status: 'failed', error: words.join(' ') }));
+      break;
+    }
+    case 'msg threads': {
+      out(await call('GET', `/api/messages/threads/${process.env.AGENT_ID ?? ''}`));
+      break;
+    }
+    case 'mem save': {
+      let [args, keywords] = flag(rest, '--keywords');
+      const [category, ...words] = args;
+      if (!['hot', 'warm', 'cold', 'shared'].includes(category) || words.length === 0) fail(USAGE);
+      out(await call('POST', '/api/memories', { category, content: words.join(' '), keywords }));
+      break;
+    }
+    case 'mem search': {
+      if (rest.length === 0) fail(USAGE);
+      const found = await call('GET', `/api/memories/search?q=${encodeURIComponent(rest.join(' '))}`);
+      for (const row of found) out(`[${row.category}/${row.sector} s=${Number(row.salience).toFixed(2)}] ${row.content}`);
+      if (found.length === 0) out('(no matches)');
+      break;
+    }
+    case 'mem archive': {
+      // Soft-retire one memory. Server maps DELETE -> archive (memories are never
+      // hard-deleted, SPEC §8); agent tokens are owner-scoped to their own rows.
+      const [id] = rest;
+      if (!id) fail(USAGE);
+      out(await call('DELETE', `/api/memories/${encodeURIComponent(id)}`));
+      break;
+    }
+    case 'mem merge': {
+      // Consolidate several memories into one: write the merged note, then archive
+      // each source. Sources you do not own (or that are missing) are reported,
+      // not fatal — the merged note is still written first so nothing is lost.
+      let [a1, into] = flag(rest, '--into');
+      let [a2, category] = flag(a1, '--category');
+      let [ids, keywords] = flag(a2, '--keywords');
+      if (into === undefined || into === '' || ids.length === 0) fail(USAGE);
+      if (category === undefined) category = 'shared';
+      if (!['hot', 'warm', 'cold', 'shared'].includes(category)) fail(USAGE);
+      const created = await call('POST', '/api/memories', { category, content: into, keywords });
+      const archived = [];
+      const failed = [];
+      for (const id of ids) {
+        const r = await callSoft('DELETE', `/api/memories/${encodeURIComponent(id)}`);
+        if (r.ok) archived.push(Number(id));
+        else failed.push({ id: Number(id), status: r.status, error: r.error });
+      }
+      out({ merged_into: created.id, category, archived, failed });
+      break;
+    }
+    case 'panel create': {
+      // pull --test / --category, then collect every repeated --solver id:angle
+      let [a1, test] = flag(rest, '--test');
+      let [args, category] = flag(a1, '--category');
+      const solvers = [];
+      for (;;) {
+        const [next, val] = flag(args, '--solver');
+        args = next;
+        if (val === undefined) break;
+        const [agentId, ...angle] = String(val).split(':');
+        solvers.push({ agentId, angle: angle.join(':') });
+      }
+      if (args.length === 0) fail(USAGE);
+      const panelBody = { goal: args.join(' ') };
+      if (solvers.length > 0) panelBody.solvers = solvers;
+      if (test !== undefined) panelBody.testCommand = test;
+      if (category !== undefined) panelBody.category = category;
+      const created = await call('POST', '/api/panels', panelBody);
+      out(`panel #${created.panel.id} created (parent card #${created.panel.parentCardId}, status=${created.panel.status})`);
+      break;
+    }
+    case 'panel get': {
+      const [id] = rest;
+      if (!id) fail(USAGE);
+      out(await call('GET', `/api/panels/${id}`));
+      break;
+    }
+    case 'panel list': {
+      const { panels } = await call('GET', '/api/panels');
+      for (const p of panels) out(`#${p.id} [${p.status}] by ${p.createdBy} — ${p.category}`);
+      if (panels.length === 0) out('(no panels)');
+      break;
+    }
+    case 'kanban add': {
+      let [args1, desc] = flag(rest, '--desc');
+      let [args2, assignee] = flag(args1, '--assignee');
+      let [args3, priority] = flag(args2, '--priority');
+      if (args3.length === 0) fail(USAGE);
+      out(
+        await call('POST', '/api/kanban/cards', {
+          title: args3.join(' '),
+          description: desc,
+          assignee,
+          priority,
+        }),
+      );
+      break;
+    }
+    case 'kanban board': {
+      const board = await call('GET', '/api/kanban/board');
+      for (const [status, cards] of Object.entries(board)) {
+        out(`== ${status} ==`);
+        for (const card of cards) out(`  #${card.id} [${card.priority}] (${card.assignee || '-'}) ${card.title}`);
+      }
+      break;
+    }
+    case 'kanban move': {
+      const [id, status] = rest;
+      if (!id || !status) fail(USAGE);
+      out(await call('POST', `/api/kanban/cards/${id}/move`, { status }));
+      break;
+    }
+    case 'kanban comment': {
+      const [id, ...words] = rest;
+      if (!id || words.length === 0) fail(USAGE);
+      out(await call('POST', `/api/kanban/cards/${id}/comments`, { body: words.join(' ') }));
+      break;
+    }
+    case 'idea add': {
+      let [args, desc] = flag(rest, '--desc');
+      if (args.length === 0) fail(USAGE);
+      out(await call('POST', '/api/ideas', { title: args.join(' '), description: desc }));
+      break;
+    }
+    case 'state save': {
+      const raw = await readStdin();
+      let state;
+      try {
+        state = JSON.parse(raw);
+      } catch {
+        fail('stdin must be a JSON task state {summary, doneSteps, alreadyDelegated, nextAction, pendingDecision}');
+      }
+      out(await call('POST', `/api/agent-state/${process.env.AGENT_ID ?? 'self'}`, { state }));
+      break;
+    }
+    case 'state load': {
+      out(await call('GET', `/api/agent-state/${process.env.AGENT_ID ?? 'self'}`));
+      break;
+    }
+    case 'dream write': {
+      const content = await readStdin();
+      out(await call('POST', '/api/learning/dream', { content }));
+      break;
+    }
+    case 'dream read': {
+      out((await call('GET', '/api/learning/dream')).content || '(empty)');
+      break;
+    }
+    default: {
+      if (cmd === 'log' && (sub !== undefined || rest.length > 0)) {
+        const line = [sub, ...rest].filter(Boolean).join(' ');
+        out(await call('POST', '/api/memories/daily-log', { line }));
+        break;
+      }
+      if (cmd === 'recall') {
+        const chat = sub ?? 'dashboard';
+        const got = await call('GET', `/api/memories/recall?chat=${encodeURIComponent(chat)}`);
+        out(got.replay || '(empty)');
+        break;
+      }
+      fail(USAGE);
+    }
+  }
+}
+
+main().catch((err) => fail(err.message, 2));

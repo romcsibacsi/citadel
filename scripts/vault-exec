@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# vault-exec — vault launch wrapper shim (PROMPT-16 §6 / FIX-16).
+# Claude Code runs this in place of an MCP server's real command after the
+# server's config has been synced to `vault:<id>` env references. It execs the
+# compiled resolver, which turns those refs into plaintext in-memory and then
+# execs the real command (argv array, never a shell). No `eval`, no plaintext on
+# disk, no value ever printed.
+DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec node "$DIR/../dist/vault/vaultExec.js" "$@"

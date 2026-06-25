@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# CITADEL #44 L1 worktree-isolation guard (pre-push). DORMANT unless
+# git config citadel.worktree.enforceL1=true. Delegates to the shared guard.
+# (stdin = pushed refs; the guard ignores it and blocks/allows by context.)
+exec "$(dirname "$0")/citadel-worktree-guard.sh" pre-push

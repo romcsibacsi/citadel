@@ -1,0 +1,18 @@
+node_modules
+node_modules/
+dist/
+dist-public/
+web/dist/
+web/dist-public/
+*.tsbuildinfo
+.env
+*.db
+*.db-wal
+*.db-shm
+.state/
+coverage/
+artifacts/
+# installer-generated systemd unit (carries the local user/paths — never committed)
+deploy/orchestrator.service
+# runtime scheduled-tasks lock (per-process state, never committed)
+.claude/scheduled_tasks.lock

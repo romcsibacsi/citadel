@@ -1,0 +1,33 @@
+{
+  "name": "orchestrator",
+  "version": "0.1.0",
+  "description": "Config-driven multi-agent orchestration system (brand-neutral core)",
+  "type": "module",
+  "private": true,
+  "author": "romcsibacsi",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "build": "tsc -p tsconfig.public.json && node scripts/build-web.mjs",
+    "build:public": "tsc -p tsconfig.public.json && node scripts/build-web.mjs --core",
+    "build:web": "node scripts/build-web.mjs",
+    "build:dbproject": "node scripts/build-dbproject.mjs",
+    "leak-gate": "node scripts/leak-gate.mjs",
+    "pretest": "node scripts/build-web.mjs",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --disable-warning=ExperimentalWarning --import tsx --test --test-concurrency=4 \"src/**/*.test.ts\"",
+    "test:integration": "node --disable-warning=ExperimentalWarning --import tsx --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "start": "node --disable-warning=ExperimentalWarning dist-public/app/main.js",
+    "dev": "node --disable-warning=ExperimentalWarning --import tsx src/app/main.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "0.25.12",
+    "playwright": "^1.60.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,82 @@
+[
+  {
+    "file": "overview-arcane.png",
+    "view": "overview",
+    "theme": "arcane"
+  },
+  {
+    "file": "constellation-arcane.png",
+    "view": "constellation",
+    "theme": "arcane"
+  },
+  {
+    "file": "agents-arcane.png",
+    "view": "agents",
+    "theme": "arcane"
+  },
+  {
+    "file": "kanban-arcane.png",
+    "view": "kanban",
+    "theme": "arcane"
+  },
+  {
+    "file": "panels-arcane.png",
+    "view": "panels",
+    "theme": "arcane"
+  },
+  {
+    "file": "studio-arcane.png",
+    "view": "studio",
+    "theme": "arcane"
+  },
+  {
+    "file": "memories-arcane.png",
+    "view": "memories",
+    "theme": "arcane"
+  },
+  {
+    "file": "channels-arcane.png",
+    "view": "channels",
+    "theme": "arcane"
+  },
+  {
+    "file": "overview-daylight.png",
+    "view": "overview",
+    "theme": "daylight"
+  },
+  {
+    "file": "constellation-daylight.png",
+    "view": "constellation",
+    "theme": "daylight"
+  },
+  {
+    "file": "agents-daylight.png",
+    "view": "agents",
+    "theme": "daylight"
+  },
+  {
+    "file": "kanban-daylight.png",
+    "view": "kanban",
+    "theme": "daylight"
+  },
+  {
+    "file": "panels-daylight.png",
+    "view": "panels",
+    "theme": "daylight"
+  },
+  {
+    "file": "studio-daylight.png",
+    "view": "studio",
+    "theme": "daylight"
+  },
+  {
+    "file": "memories-daylight.png",
+    "view": "memories",
+    "theme": "daylight"
+  },
+  {
+    "file": "channels-daylight.png",
+    "view": "channels",
+    "theme": "daylight"
+  }
+]

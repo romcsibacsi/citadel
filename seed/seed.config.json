@@ -1,0 +1,781 @@
+{
+  "branding": {
+    "productName": "CITADEL",
+    "tagline": "Owned multi-agent orchestration"
+  },
+  "locale": {
+    "default": "hu",
+    "agentProse": "hu"
+  },
+  "timezone": "Europe/Budapest",
+  "defaultPermissionMode": "permissive",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 7080,
+    "allowedOrigins": []
+  },
+  "hubId": "nexus",
+  "agents": [
+    {
+      "id": "nexus",
+      "displayName": "NEXUS",
+      "role": "Hub / orchestrator",
+      "securityProfile": "full-host",
+      "accentColor": "#7c5cff",
+      "authMode": "shared-subscription",
+      "channel": {
+        "provider": "telegram"
+      },
+      "team": {
+        "role": "hub",
+        "delegatesTo": [
+          "forge",
+          "spark",
+          "sigma",
+          "relay",
+          "oracle",
+          "creative",
+          "archivist",
+          "argus",
+          "harbor",
+          "muse",
+          "prism",
+          "probe",
+          "reel",
+          "screener"
+        ],
+        "trustFrom": []
+      }
+    },
+    {
+      "id": "forge",
+      "displayName": "FORGE",
+      "role": "Senior development & build",
+      "model": "claude-opus-4-8[1m]",
+      "securityProfile": "developer-senior",
+      "accentColor": "#f59e0b",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "spark",
+      "displayName": "SPARK",
+      "role": "Junior development & experiments",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "developer-junior",
+      "accentColor": "#facc15",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "sigma",
+      "displayName": "SIGMA",
+      "role": "Data & analysis",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "data-analyst",
+      "accentColor": "#8b5cf6",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "relay",
+      "displayName": "RELAY",
+      "role": "Homelab / netops",
+      "model": "claude-opus-4-8[1m]",
+      "securityProfile": "homelab-full",
+      "accentColor": "#3b82f6",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "oracle",
+      "displayName": "ORACLE",
+      "role": "Research & intel",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "researcher",
+      "accentColor": "#d4af37",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "creative",
+      "displayName": "CREATIVE",
+      "role": "Image generation",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "media",
+      "accentColor": "#ec4899",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "archivist",
+      "displayName": "ARCHIVIST",
+      "role": "Knowledge / vault curator",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "archivist",
+      "accentColor": "#a16207",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "argus",
+      "displayName": "ARGUS",
+      "role": "Video monitoring",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "media",
+      "accentColor": "#f97316",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "harbor",
+      "displayName": "HARBOR",
+      "role": "DevOps / release",
+      "model": "claude-opus-4-8[1m]",
+      "securityProfile": "developer-senior",
+      "accentColor": "#0ea5e9",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "muse",
+      "displayName": "MUSE",
+      "role": "Image generation (local)",
+      "model": "muse-brain:latest",
+      "runtime": "ollama",
+      "securityProfile": "media",
+      "accentColor": "#a855f7",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      },
+      "strictTools": true
+    },
+    {
+      "id": "prism",
+      "displayName": "PRISM",
+      "role": "Web / UI design",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "researcher",
+      "accentColor": "#6366f1",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "probe",
+      "displayName": "PROBE",
+      "role": "QA / testing",
+      "model": "claude-opus-4-8[1m]",
+      "securityProfile": "developer-junior",
+      "accentColor": "#ef4444",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "reel",
+      "displayName": "REEL",
+      "role": "Video generation (local)",
+      "model": "muse-brain:latest",
+      "runtime": "ollama",
+      "securityProfile": "media",
+      "accentColor": "#14b8a6",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      },
+      "strictTools": true
+    },
+    {
+      "id": "screener",
+      "displayName": "SCREENER",
+      "role": "Video editing",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "media",
+      "accentColor": "#22c55e",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "support",
+      "displayName": "SUPPORT",
+      "role": "Customer service",
+      "model": "claude-sonnet-4-6",
+      "securityProfile": "customer-service",
+      "customerFacing": true,
+      "accentColor": "#06b6d4",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "productVisible": true,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    },
+    {
+      "id": "bookkeeper",
+      "displayName": "BOOKKEEPER",
+      "role": "Bookkeeping",
+      "model": "claude-opus-4-8[1m]",
+      "securityProfile": "bookkeeper",
+      "accentColor": "#ca8a04",
+      "authMode": "shared-subscription",
+      "channel": null,
+      "productVisible": true,
+      "dormant": true,
+      "team": {
+        "role": "member",
+        "reportsTo": "nexus",
+        "delegatesTo": [],
+        "trustFrom": [],
+        "autoDelegation": false
+      }
+    }
+  ],
+  "lanes": [
+    {
+      "agentId": "forge",
+      "keywords": [
+        "build",
+        "deploy",
+        "code",
+        "kód",
+        "fejleszt",
+        "bug",
+        "fix",
+        "api",
+        "backend",
+        "frontend",
+        "refactor"
+      ]
+    },
+    {
+      "agentId": "spark",
+      "keywords": [
+        "prototípus",
+        "prototype",
+        "kísérlet",
+        "experiment",
+        "sandbox",
+        "poc",
+        "scrape",
+        "automatizál"
+      ]
+    },
+    {
+      "agentId": "sigma",
+      "keywords": [
+        "adat",
+        "data",
+        "elemz",
+        "analy",
+        "statisztika",
+        "dataset",
+        "csv",
+        "sql",
+        "riport",
+        "report",
+        "benchmark",
+        "metrik"
+      ]
+    },
+    {
+      "agentId": "relay",
+      "keywords": [
+        "infra",
+        "server",
+        "szerver",
+        "docker",
+        "homelab",
+        "cron",
+        "üzemeltet",
+        "telepít",
+        "monitor",
+        "backup",
+        "hálózat",
+        "network"
+      ]
+    },
+    {
+      "agentId": "oracle",
+      "keywords": [
+        "kutat",
+        "research",
+        "intel",
+        "piac",
+        "market",
+        "verseny",
+        "competitor",
+        "forrás",
+        "source",
+        "trend"
+      ]
+    },
+    {
+      "agentId": "creative",
+      "keywords": [
+        "kép",
+        "image",
+        "grafika",
+        "logo",
+        "banner",
+        "illusztráció",
+        "vizuál"
+      ]
+    }
+  ],
+  "securityProfiles": [
+    {
+      "id": "sandbox",
+      "label": "Sandbox",
+      "mode": "strict",
+      "defaultMode": "bypassPermissions",
+      "privilegeLevel": 0,
+      "allow": [
+        "Read({AGENT_DIR}/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)"
+      ],
+      "ask": [],
+      "deny": [
+        "Bash(*)",
+        "WebFetch(*)",
+        "Read(/**)",
+        "Write(/**)"
+      ]
+    },
+    {
+      "id": "draft",
+      "label": "Draft / read-mostly",
+      "mode": "strict",
+      "defaultMode": "ask",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "WebFetch(*)",
+        "Bash(git status)",
+        "Bash(git log *)",
+        "Bash(git diff *)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Bash(sudo *)",
+        "Write(/etc/**)"
+      ]
+    },
+    {
+      "id": "trusted-build",
+      "label": "Trusted build",
+      "mode": "permissive",
+      "privilegeLevel": 2,
+      "allow": [
+        "Read(/**)",
+        "Write(/**)",
+        "Edit(/**)",
+        "Bash(*)",
+        "WebFetch(*)"
+      ],
+      "ask": [],
+      "deny": [
+        "Bash(sudo *)",
+        "Write(/etc/**)"
+      ]
+    },
+    {
+      "id": "full-host",
+      "label": "Full host (pre-seeded roster only)",
+      "mode": "permissive",
+      "privilegeLevel": 3,
+      "allow": [
+        "*"
+      ],
+      "ask": [],
+      "deny": []
+    },
+    {
+      "id": "developer-senior",
+      "label": "Senior developer (build)",
+      "mode": "permissive",
+      "privilegeLevel": 2,
+      "allow": [
+        "Read(/**)",
+        "Write(/**)",
+        "Edit(/**)",
+        "Bash(*)"
+      ],
+      "ask": [],
+      "deny": [
+        "Bash(sudo *)",
+        "Write(/etc/**)"
+      ]
+    },
+    {
+      "id": "homelab-full",
+      "label": "Homelab / netops",
+      "mode": "permissive",
+      "privilegeLevel": 2,
+      "allow": [
+        "Read(/**)",
+        "Write(/**)",
+        "Edit(/**)",
+        "Bash(*)"
+      ],
+      "ask": [],
+      "deny": [
+        "Bash(sudo *)"
+      ]
+    },
+    {
+      "id": "developer-junior",
+      "label": "Junior developer",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "Bash(git status)",
+        "Bash(git log *)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "researcher",
+      "label": "Researcher / intel",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "WebFetch(*)",
+        "Bash(git status)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "customer-service",
+      "label": "Customer service (strict, isolated)",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "Bash(git status)",
+        "Bash(agentctl *)"
+      ],
+      "ask": [],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)",
+        "WebFetch(*)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "bookkeeper",
+      "label": "Bookkeeper (strict, financial-data isolated)",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "Bash(git status)",
+        "Bash(agentctl *)"
+      ],
+      "ask": [],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)",
+        "WebFetch(*)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "data-analyst",
+      "label": "Data analyst",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)",
+        "Bash(git status)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "archivist",
+      "label": "Knowledge / vault curator",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)"
+      ],
+      "defaultMode": "ask"
+    },
+    {
+      "id": "media",
+      "label": "Media generation",
+      "mode": "strict",
+      "privilegeLevel": 1,
+      "allow": [
+        "Read(/**)",
+        "Write({AGENT_DIR}/**)",
+        "Edit({AGENT_DIR}/**)"
+      ],
+      "ask": [
+        "Bash(*)"
+      ],
+      "deny": [
+        "Write(/etc/**)",
+        "Bash(sudo *)"
+      ],
+      "defaultMode": "ask"
+    }
+  ],
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "tokenRef": "vault:telegram-bot-token",
+      "operatorChatId": ""
+    }
+  },
+  "scheduler": {
+    "catchupWindowMinutes": 5,
+    "bootCatchupWindowMinutes": 180,
+    "retryIntervalMinutes": 10
+  },
+  "autonomySeed": [
+    {
+      "category": "kanban_archive_done",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "kanban_stuck_nudge",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "memory_maintenance",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "routine_trivial_fix",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "deploy_retry",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "kanban_restructure",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "skill_patch",
+      "level": 1,
+      "maxLevel": 3,
+      "locked": false
+    },
+    {
+      "category": "email_send",
+      "level": 1,
+      "maxLevel": 2,
+      "locked": false
+    },
+    {
+      "category": "publish_content",
+      "level": 1,
+      "maxLevel": 1,
+      "locked": true
+    },
+    {
+      "category": "payment",
+      "level": 1,
+      "maxLevel": 1,
+      "locked": true
+    },
+    {
+      "category": "data_delete",
+      "level": 1,
+      "maxLevel": 1,
+      "locked": true
+    },
+    {
+      "category": "permission_change",
+      "level": 1,
+      "maxLevel": 1,
+      "locked": true
+    },
+    {
+      "category": "external_message",
+      "level": 1,
+      "maxLevel": 1,
+      "locked": true
+    }
+  ],
+  "runtime": {
+    "adapter": "claude-code",
+    "claude": {
+      "command": "claude",
+      "staggerSeconds": 15,
+      "sessionPrefix": "citadel",
+      "socket": "citadel-mux"
+    }
+  },
+  "autoCompact": {
+    "enabled": true,
+    "thresholdFraction": 0.75
+  },
+  "modelAliases": {
+    "default": "claude-fable-5",
+    "fast": "claude-haiku-4-5-20251001",
+    "deep": "claude-fable-5",
+    "muse-brain:latest": "muse-brain:latest",
+    "claude-opus-4-8[1m]": "claude-opus-4-8[1m]"
+  }
+}

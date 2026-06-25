@@ -1,0 +1,36 @@
+{
+  "_comment": "ComfyUI API-format graph for Wan 2.2 A14B — the operator's DEFAULT video path. A14B is a Mixture-of-Experts: a HIGH-noise and a LOW-noise checkpoint that ComfyUI loads SEQUENTIALLY (only one ~12-14GB expert resident at a time -> ~25-27GB peak, fits the RTX 5090's 32GB after VRAM is freed). The two experts run as two chained KSamplerAdvanced: the high expert does steps 0..boundary leaving leftover noise, the low expert finishes boundary..end. Shown below: the DEFAULT t2v + Lightning + GGUF variant. See the _variants block for i2v, fp8, and accurate-mode deltas.",
+  "_models": "GGUF experts (city96 ComfyUI-GGUF, UnetLoaderGGUF, models/unet): t2v Wan2.2-T2V-A14B-{High,Low}Noise-Q6_K.gguf ; i2v Wan2.2-I2V-A14B-{High,Low}Noise-Q6_K.gguf. fp8 alt (UNETLoader): wan2.2_{t2v,i2v}_{high,low}_noise_14B_fp8_scaled.safetensors. Lightning 4-step LoRAs (shared by both precisions): t2v wan2.2_t2v_lightx2v_4steps_lora_v1.1_{high,low}_noise.safetensors ; i2v wan2.2_i2v_lightx2v_4steps_lora_v1_{high,low}_noise.safetensors. CLIP umt5_xxl_fp8_e4m3fn_scaled.safetensors (type wan). VAE wan_2.1_vae.safetensors (NOT the 5B's wan2.2_vae). Native fps 16 (81 frames ~= 5s). ModelSamplingSD3 shift 8.0 (Wan 2.2 720p default).",
+  "_boundary": "<<boundary>> = max(1, min(steps-1, round(steps/2))).",
+  "_variants": {
+    "i2v": "Replace node 55 EmptyHunyuanLatentVideo with WanImageToVideo: { class_type: 'WanImageToVideo', inputs: { positive: ['6',0], negative: ['7',0], vae: ['39',0], width, height, length, batch_size: 1, start_image: ['50',0] } } AND add node 50 LoadImage { image: <<uploaded_input_name>> }. Then re-wire BOTH samplers: positive ['55',0], negative ['55',1], latent_image ['55',2] (high) / ['3h',0] (low). WanImageToVideo VAE-encodes the start image into a full-res latent AND injects it into the conditioning. No clip-vision needed for I2V-A14B. (Do NOT use Wan22ImageToVideoLatent here — that's the 5B 16x node; with the 2.1 VAE it yields half-resolution.)",
+    "fp8": "Swap UnetLoaderGGUF -> UNETLoader { unet_name: <fp8 .safetensors>, weight_dtype: 'default' }. Everything else identical.",
+    "accurate": "If the operator asks for higher quality (requested steps > 12): DROP the Lightning LoRAs (delete 61h/61l; point 62h/62l model at ['37h',0]/['37l',0] directly), use real steps 10..40 + cfg ~4.5, and cap resolution to ~960px max side (/16) because cfg>1 ~doubles activation memory and 720p OOMs past ~2s. Lightning (default) keeps cfg 1, steps 2..8, full 720p."
+  },
+  "37h": { "class_type": "UnetLoaderGGUF", "inputs": { "unet_name": "Wan2.2-T2V-A14B-HighNoise-Q6_K.gguf" } },
+  "37l": { "class_type": "UnetLoaderGGUF", "inputs": { "unet_name": "Wan2.2-T2V-A14B-LowNoise-Q6_K.gguf" } },
+  "61h": { "class_type": "LoraLoaderModelOnly", "inputs": { "model": ["37h", 0], "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors", "strength_model": 1.0 } },
+  "61l": { "class_type": "LoraLoaderModelOnly", "inputs": { "model": ["37l", 0], "lora_name": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors", "strength_model": 1.0 } },
+  "62h": { "class_type": "ModelSamplingSD3", "inputs": { "model": ["61h", 0], "shift": 8.0 } },
+  "62l": { "class_type": "ModelSamplingSD3", "inputs": { "model": ["61l", 0], "shift": 8.0 } },
+  "38": { "class_type": "CLIPLoader", "inputs": { "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan" } },
+  "39": { "class_type": "VAELoader", "inputs": { "vae_name": "wan_2.1_vae.safetensors" } },
+  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "<<prompt>>", "clip": ["38", 0] } },
+  "7": { "class_type": "CLIPTextEncode", "inputs": { "text": "<<negative>>", "clip": ["38", 0] } },
+  "55": { "class_type": "EmptyHunyuanLatentVideo", "inputs": { "width": "<<width>>", "height": "<<height>>", "length": "<<frames>>", "batch_size": 1 } },
+  "3h": { "class_type": "KSamplerAdvanced", "inputs": {
+    "add_noise": "enable", "noise_seed": "<<seed>>", "steps": "<<steps>>", "cfg": "<<cfg>>",
+    "sampler_name": "euler", "scheduler": "simple",
+    "model": ["62h", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["55", 0],
+    "start_at_step": 0, "end_at_step": "<<boundary>>", "return_with_leftover_noise": "enable"
+  } },
+  "3l": { "class_type": "KSamplerAdvanced", "inputs": {
+    "add_noise": "disable", "noise_seed": "<<seed>>", "steps": "<<steps>>", "cfg": "<<cfg>>",
+    "sampler_name": "euler", "scheduler": "simple",
+    "model": ["62l", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["3h", 0],
+    "start_at_step": "<<boundary>>", "end_at_step": 10000, "return_with_leftover_noise": "disable"
+  } },
+  "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3l", 0], "vae": ["39", 0] } },
+  "40": { "class_type": "CreateVideo", "inputs": { "images": ["8", 0], "fps": "<<fps>>" } },
+  "41": { "class_type": "SaveVideo", "inputs": { "video": ["40", 0], "filename_prefix": "studio/reel", "format": "mp4", "codec": "h264" } }
+}

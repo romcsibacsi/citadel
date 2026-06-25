@@ -1,0 +1,6 @@
+{
+  "_comment": "ComfyUI API-format background-removal graph (FIX-plugin-comfy-workflows §4). Uses an RMBG custom node (ComfyUI-RMBG / BRIA RMBG) to produce a transparent-background PNG. CUSTOM NODE — the service probes hasNode('RMBG') (and falls back name variants) first and returns a clear 'not installed' message otherwise. <<source_image>> from /upload/image. SaveImage writes RGBA PNG.",
+  "10": { "class_type": "LoadImage", "inputs": { "image": "<<source_image>>" } },
+  "30": { "class_type": "RMBG", "inputs": { "image": ["10", 0] } },
+  "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "<<prefix>>", "images": ["30", 0] } }
+}
